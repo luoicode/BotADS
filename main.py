@@ -304,7 +304,12 @@ def stop_my_ads():
 # ===== TELEGRAM COMMAND =====
 def check_telegram_commands():
     global LAST_UPDATE_ID, last_command_time, last_command_text, processed_updates
-    LAST_UPDATE_ID = None  # THÊM DÒNG NÀY ĐỂ RESET
+
+    # RESET HOÀN TOÀN
+    LAST_UPDATE_ID = None
+    processed_updates = set()
+    last_command_time = 0
+    last_command_text = ""
 
     # Dọn dẹp processed_updates cũ (giữ 100 ID gần nhất)
     if len(processed_updates) > 100:
