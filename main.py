@@ -305,21 +305,19 @@ def stop_my_ads():
 def check_telegram_commands():
     global LAST_UPDATE_ID, last_command_time, last_command_text, processed_updates
 
-    # RESET HOÀN TOÀN
-    LAST_UPDATE_ID = None
-    processed_updates = set()
-    last_command_time = 0
-    last_command_text = ""
-
-    # Dọn dẹp processed_updates cũ (giữ 100 ID gần nhất)
-    if len(processed_updates) > 100:
-        processed_updates = set(list(processed_updates)[-100:])
+    # KHÔNG reset ở đây! Chỉ reset 1 lần khi khởi động
+    # LAST_UPDATE_ID = None  ← XÓA DÒNG NÀY
+    # processed_updates = set()  ← XÓA DÒNG NÀY
+    # last_command_time = 0  ← XÓA DÒNG NÀY
+    # last_command_text = ""  ← XÓA DÒNG NÀY
 
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getUpdates"
     params = {"timeout": 1, "allowed_updates": ["message"]}
 
     if LAST_UPDATE_ID:
         params["offset"] = LAST_UPDATE_ID + 1
+    else:
+        params["offset"] = -1  # Chỉ lấy tin nhắn mới nhất nếu chưa có ID
 
     try:
         res = requests.get(url, params=params, timeout=5)
@@ -337,8 +335,6 @@ def check_telegram_commands():
         if update_id in processed_updates:
             continue
 
-        LAST_UPDATE_ID = update_id
-
         if "message" not in update:
             continue
 
@@ -346,21 +342,30 @@ def check_telegram_commands():
         current_time = time.time()
         text = update["message"].get("text", "")
 
-        # Nếu giống lệnh trước đó và trong vòng 2 giây thì bỏ qua
-        if text == last_command_text and current_time - last_command_time < 2:
+        # Nếu giống lệnh trước đó và trong vòng 3 giây thì bỏ qua
+        if text == last_command_text and current_time - last_command_time < 3:
             processed_updates.add(update_id)
             continue
 
+        # Xử lý lệnh
         if text == "/ads":
+            print(f"📨 Xử lý /ads lúc {get_time_vn().strftime('%H:%M:%S')}")
             send_telegram(get_ads_report())
             last_command_text = text
             last_command_time = current_time
         elif text == "/stopads":
+            print(f"📨 Xử lý /stopads lúc {get_time_vn().strftime('%H:%M:%S')}")
             stop_my_ads()
             last_command_text = text
             last_command_time = current_time
 
+        # Đánh dấu đã xử lý
         processed_updates.add(update_id)
+        LAST_UPDATE_ID = update_id
+
+    # Giới hạn kích thước processed_updates
+    if len(processed_updates) > 200:
+        processed_updates = set(list(processed_updates)[-200:])
 
 
 def get_payload():
