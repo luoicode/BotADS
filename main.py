@@ -5,16 +5,16 @@ import os
 from datetime import datetime
 from flask import Flask
 from threading import Thread
-import sys
+import pytz
 
-print(f"Python version: {sys.version}")
-print(f"Timezone set to: {os.environ.get('TZ')}")
 # Set múi giờ Việt Nam
-os.environ["TZ"] = "Asia/Ho_Chi_Minh"
-try:
-    time.tzset()
-except:
-    pass  # Windows không có tzset
+vn_tz = pytz.timezone("Asia/Ho_Chi_Minh")
+
+
+def get_time_vn():
+    """Lấy thời gian Việt Nam"""
+    return datetime.now(vn_tz)
+
 
 app = Flask(__name__)
 
