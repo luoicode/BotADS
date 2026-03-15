@@ -5,7 +5,10 @@ import os
 from datetime import datetime
 from flask import Flask
 from threading import Thread
+import sys
 
+print(f"Python version: {sys.version}")
+print(f"Timezone set to: {os.environ.get('TZ')}")
 # Set múi giờ Việt Nam
 os.environ["TZ"] = "Asia/Ho_Chi_Minh"
 try:
