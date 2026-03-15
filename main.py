@@ -74,11 +74,6 @@ report_15_sent = False
 report_17_sent = False
 
 
-def get_time_vn():
-    """Lấy thời gian Việt Nam"""
-    return datetime.now()
-
-
 def send_telegram(msg):
     url_tele = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     try:
@@ -240,7 +235,6 @@ def stop_my_ads():
 
     total_stopped = len(stopped_adsets)
 
-    # Chỉ hiện 1 dòng thông báo gọn
     print(
         f"✅ Đã tắt {total_stopped} nhóm quảng cáo lúc {get_time_vn().strftime('%H:%M:%S')}"
     )
@@ -256,7 +250,6 @@ def stop_my_ads():
 
 # ===== TELEGRAM COMMAND =====
 def check_telegram_commands():
-
     global LAST_UPDATE_ID
 
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getUpdates"
@@ -272,7 +265,6 @@ def check_telegram_commands():
         return
 
     for update in res["result"]:
-
         LAST_UPDATE_ID = update["update_id"]
 
         if "message" not in update:
@@ -282,7 +274,6 @@ def check_telegram_commands():
 
         if text == "/ads":
             send_telegram(get_ads_report())
-
         elif text == "/stopads":
             stop_my_ads()
 
@@ -319,9 +310,7 @@ while True:
         phone_first_owner = {}
 
         if "data" in data:
-
             for lead in data["data"]:
-
                 phone = lead.get("khachHangSoDienThoai")
                 marketing = lead.get("marketingUserName")
 
@@ -329,32 +318,26 @@ while True:
                     phone_first_owner[phone] = marketing
 
             for lead in data["data"]:
-
                 phone = lead.get("khachHangSoDienThoai")
                 marketing = lead.get("marketingUserName")
 
                 if marketing != MY_USERNAME:
                     continue
-
                 if lead.get("isKhachCu"):
                     continue
-
                 if phone_first_owner.get(phone) != MY_USERNAME:
                     continue
 
                 leads_today.append(lead)
 
             for lead in leads_today:
-
                 if lead.get("lgtDonHangTrangThaiChotDon") == 1:
-
                     orders_today.append(lead)
 
                     money = round(lead.get("lgtDonHangTienThuKhach") or 0)
                     total_money += money
 
                     if lead["id"] not in sent_orders:
-
                         name = lead.get("khachHangTen")
                         phone = lead.get("khachHangSoDienThoai")
                         sale = lead.get("saleDisplayName")
@@ -366,7 +349,6 @@ while True:
 """
 
                         send_telegram(msg)
-
                         sent_orders.add(lead["id"])
 
             now = get_time_vn()
