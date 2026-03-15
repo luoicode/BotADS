@@ -305,67 +305,80 @@ def stop_my_ads():
 def check_telegram_commands():
     global LAST_UPDATE_ID, last_command_time, last_command_text, processed_updates
 
-    # KHÔNG reset ở đây! Chỉ reset 1 lần khi khởi động
-    # LAST_UPDATE_ID = None  ← XÓA DÒNG NÀY
-    # processed_updates = set()  ← XÓA DÒNG NÀY
-    # last_command_time = 0  ← XÓA DÒNG NÀY
-    # last_command_text = ""  ← XÓA DÒNG NÀY
-
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getUpdates"
-    params = {"timeout": 1, "allowed_updates": ["message"]}
+    params = {
+        "timeout": 1,
+        "allowed_updates": ["message"],
+        "limit": 1,  # CHỈ LẤY 1 TIN NHẮN MỖI LẦN
+    }
 
     if LAST_UPDATE_ID:
         params["offset"] = LAST_UPDATE_ID + 1
     else:
-        params["offset"] = -1  # Chỉ lấy tin nhắn mới nhất nếu chưa có ID
+        params["offset"] = -1
 
     try:
         res = requests.get(url, params=params, timeout=5)
         data = res.json()
-    except:
+    except Exception as e:
+        print(f"Lỗi getUpdates: {e}")
         return
 
     if not data.get("ok"):
         return
 
-    for update in data.get("result", []):
-        update_id = update["update_id"]
+    updates = data.get("result", [])
+    if not updates:
+        return
 
-        # Bỏ qua nếu đã xử lý
-        if update_id in processed_updates:
-            continue
+    # Chỉ xử lý update đầu tiên
+    update = updates[0]
+    update_id = update["update_id"]
 
-        if "message" not in update:
-            continue
-
-        # Kiểm tra thời gian trùng lặp
-        current_time = time.time()
-        text = update["message"].get("text", "")
-
-        # Nếu giống lệnh trước đó và trong vòng 3 giây thì bỏ qua
-        if text == last_command_text and current_time - last_command_time < 3:
-            processed_updates.add(update_id)
-            continue
-
-        # Xử lý lệnh
-        if text == "/ads":
-            print(f"📨 Xử lý /ads lúc {get_time_vn().strftime('%H:%M:%S')}")
-            send_telegram(get_ads_report())
-            last_command_text = text
-            last_command_time = current_time
-        elif text == "/stopads":
-            print(f"📨 Xử lý /stopads lúc {get_time_vn().strftime('%H:%M:%S')}")
-            stop_my_ads()
-            last_command_text = text
-            last_command_time = current_time
-
-        # Đánh dấu đã xử lý
-        processed_updates.add(update_id)
+    # Kiểm tra đã xử lý chưa
+    if update_id in processed_updates:
+        # Nếu đã xử lý, cập nhật offset để bỏ qua
         LAST_UPDATE_ID = update_id
+        return
 
-    # Giới hạn kích thước processed_updates
-    if len(processed_updates) > 200:
-        processed_updates = set(list(processed_updates)[-200:])
+    if "message" not in update:
+        LAST_UPDATE_ID = update_id
+        processed_updates.add(update_id)
+        return
+
+    current_time = time.time()
+    text = update["message"].get("text", "")
+
+    # Kiểm tra thời gian trùng
+    if text == last_command_text and current_time - last_command_time < 5:
+        LAST_UPDATE_ID = update_id
+        processed_updates.add(update_id)
+        return
+
+    # Xử lý lệnh
+    if text == "/ads":
+        print(f"📨 Xử lý /ads lúc {get_time_vn().strftime('%H:%M:%S')}")
+        report = get_ads_report()
+        send_telegram(report)
+        last_command_text = text
+        last_command_time = current_time
+    elif text == "/stopads":
+        print(f"📨 Xử lý /stopads lúc {get_time_vn().strftime('%H:%M:%S')}")
+        stop_my_ads()
+        last_command_text = text
+        last_command_time = current_time
+    else:
+        # Không phải lệnh, vẫn đánh dấu đã xử lý
+        last_command_text = ""
+        last_command_time = 0
+
+    # Đánh dấu đã xử lý
+    processed_updates.add(update_id)
+    LAST_UPDATE_ID = update_id
+
+    # Giới hạn kích thước
+    if len(processed_updates) > 100:
+        processed_updates = set(list(processed_updates)[-100:])
 
 
 def get_payload():
