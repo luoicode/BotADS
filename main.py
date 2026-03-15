@@ -1,9 +1,17 @@
 import requests
 import time
 import json
+import os
 from datetime import datetime
 from flask import Flask
 from threading import Thread
+
+# Set múi giờ Việt Nam
+os.environ["TZ"] = "Asia/Ho_Chi_Minh"
+try:
+    time.tzset()
+except:
+    pass  # Windows không có tzset
 
 app = Flask(__name__)
 
@@ -63,14 +71,17 @@ report_15_sent = False
 report_17_sent = False
 
 
+def get_time_vn():
+    """Lấy thời gian Việt Nam"""
+    return datetime.now()
+
+
 def send_telegram(msg):
-
     url_tele = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-
     try:
         requests.post(url_tele, data={"chat_id": CHAT_ID, "text": msg})
     except:
-        print("Không gửi được Telegram")
+        print(f"Không gửi được Telegram lúc {get_time_vn().strftime('%H:%M:%S')}")
 
 
 # ===== ADS REPORT =====
@@ -173,7 +184,7 @@ def get_ads_report():
     bad_240 = list(set(bad_240))
     bad_360 = list(set(bad_360))
 
-    print(f"✅ Đã gửi báo cáo ADS lúc {datetime.now().strftime('%H:%M:%S')}")
+    print(f"✅ Đã gửi báo cáo ADS lúc {get_time_vn().strftime('%H:%M:%S')}")
 
     msg = f"""
 📊 ADS MANAGER
@@ -228,7 +239,7 @@ def stop_my_ads():
 
     # Chỉ hiện 1 dòng thông báo gọn
     print(
-        f"✅ Đã tắt {total_stopped} nhóm quảng cáo lúc {datetime.now().strftime('%H:%M:%S')}"
+        f"✅ Đã tắt {total_stopped} nhóm quảng cáo lúc {get_time_vn().strftime('%H:%M:%S')}"
     )
 
     msg = f"""
@@ -274,8 +285,7 @@ def check_telegram_commands():
 
 
 def get_payload():
-
-    today = datetime.now().strftime("%Y-%m-%d")
+    today = get_time_vn().strftime("%Y-%m-%d")
 
     return {
         "date": [f"{today}T00:00:00+07:00", f"{today}T23:59:59+07:00"],
@@ -287,12 +297,10 @@ def get_payload():
 
 
 print("Bot Sandbox đã khởi động")
-keep_alive()  # THÊM DÒNG NÀY
+keep_alive()
 
 while True:
-
     try:
-
         check_telegram_commands()
 
         payload = get_payload()
@@ -358,7 +366,7 @@ while True:
 
                         sent_orders.add(lead["id"])
 
-            now = datetime.now()
+            now = get_time_vn()
 
             leads_count = len(leads_today)
             orders_count = len(orders_today)
@@ -412,13 +420,12 @@ CR: {cr}%
                 report_17_sent = True
 
         print(
-            "\r🟢 Bot running |",
-            datetime.now().strftime("%H:%M:%S"),
+            f"\r🟢 Bot running | {get_time_vn().strftime('%H:%M:%S')}",
             end="",
             flush=True,
         )
 
     except Exception as e:
-        print("Lỗi:", e)
+        print(f"\nLỗi lúc {get_time_vn().strftime('%H:%M:%S')}: {e}")
 
     time.sleep(30)
