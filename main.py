@@ -39,12 +39,12 @@ META_TOKEN = "EAAafzAo8hZAgBQ4ToAl5BounoYvYgUzvvHbterNXxui4OnsyHwXgiIaix2TfaeuHz
 AD_ACCOUNT_ID = "act_460351299625267"
 MY_NAME = "Nguyễn Hữu Huy"
 
-# ===== TELEGRAM COMMAND =====
-LAST_UPDATE_ID = None
-
 # ===== TELEGRAM =====
 TELEGRAM_TOKEN = "8689152984:AAEt7KA8lVhPjH-e85DKS_hN39EnVjaYfFI"
 CHAT_ID = "6511673241"
+LAST_UPDATE_ID = None
+last_command_time = 0
+last_command_text = ""
 
 # ===== MARKETING USERNAME =====
 MY_USERNAME = "NhatTam045"
@@ -67,12 +67,72 @@ cookies = {
 }
 
 sent_orders = set()
+processed_updates = set()
 
 report_1140_sent = False
 report_1330_sent = False
 report_15_sent = False
 report_17_sent = False
-last_command_time = 0
+
+# ===== CHECK EXPIRY DATES =====
+EXPIRY_CHECKED = False
+META_EXPIRY = 1773594000  # 15/05/2026
+SANDWICH_EXPIRY = 1774047762  # 20/03/2026
+
+
+def check_expiry_dates():
+    """Kiểm tra và thông báo các mục sắp hết hạn"""
+    global EXPIRY_CHECKED
+
+    if EXPIRY_CHECKED:
+        return
+
+    now = time.time()
+    warnings = []
+
+    # Kiểm tra Meta Token
+    days_left = (META_EXPIRY - now) / 86400
+    if days_left < 7:
+        warnings.append(
+            f"⚠️ Meta Token sắp hết hạn: {int(days_left)} ngày ({datetime.fromtimestamp(META_EXPIRY, vn_tz).strftime('%d/%m/%Y')})"
+        )
+    elif days_left < 30:
+        warnings.append(
+            f"📅 Meta Token còn: {int(days_left)} ngày ({datetime.fromtimestamp(META_EXPIRY, vn_tz).strftime('%d/%m/%Y')})"
+        )
+
+    # Kiểm tra Sandbox Token
+    days_left = (SANDWICH_EXPIRY - now) / 86400
+    if days_left < 3:
+        warnings.append(
+            f"⚠️⚠️ SANDWICH TOKEN HẾT HẠN TRONG {int(days_left)} NGÀY! ({datetime.fromtimestamp(SANDWICH_EXPIRY, vn_tz).strftime('%d/%m/%Y')})"
+        )
+    elif days_left < 7:
+        warnings.append(
+            f"⚠️ Sandwich Token sắp hết hạn: {int(days_left)} ngày ({datetime.fromtimestamp(SANDWICH_EXPIRY, vn_tz).strftime('%d/%m/%Y')})"
+        )
+    else:
+        warnings.append(f"✅ Sandwich Token còn: {int(days_left)} ngày")
+
+    # Kiểm tra Railway
+    now_vn = get_time_vn()
+    hours_used = (now_vn.day - 1) * 24 + now_vn.hour
+    hours_left = 500 - hours_used
+
+    if hours_left < 0:
+        warnings.append(f"⚠️⚠️ RAILWAY ĐÃ HẾT GIỜ ({hours_used}/500 giờ)! Bot sẽ ngủ.")
+    elif hours_left < 50:
+        warnings.append(f"⚠️ Railway còn: {hours_left} giờ ({hours_used}/500)")
+    else:
+        warnings.append(f"✅ Railway còn: {hours_left} giờ")
+
+    # Gửi thông báo
+    if warnings:
+        msg = "🔔 **KIỂM TRA HẠN SỬ DỤNG**\n\n" + "\n".join(warnings)
+        send_telegram(msg)
+        print(f"\n{'='*50}\n{msg}\n{'='*50}")
+
+    EXPIRY_CHECKED = True
 
 
 def send_telegram(msg):
@@ -97,7 +157,7 @@ def get_ads_report():
     res_camp = requests.get(url_campaigns, params=params_camp)
     data_camp = res_camp.json()
 
-    campaign_names = {}  # Tất cả campaign của bạn (kể cả không có nhóm)
+    campaign_names = {}
 
     if "data" in data_camp:
         for camp in data_camp["data"]:
@@ -116,15 +176,12 @@ def get_ads_report():
     res_adsets = requests.get(url_adsets, params=params_adsets)
     data_adsets = res_adsets.json()
 
-    # Campaign có nhóm đang hoạt động
     campaigns_with_active_adsets = set()
     my_active_adsets = set()
-    all_my_adsets = set()
 
     if "data" in data_adsets:
         for adset in data_adsets["data"]:
             if adset["campaign_id"] in campaign_names:
-                all_my_adsets.add(adset["id"])
                 if adset.get("status") == "ACTIVE":
                     my_active_adsets.add(adset["id"])
                     campaigns_with_active_adsets.add(adset["campaign_id"])
@@ -145,7 +202,6 @@ def get_ads_report():
 
     total_spend = 0
     total_contact = 0
-
     bad_120 = []
     bad_240 = []
     bad_360 = []
@@ -165,7 +221,6 @@ def get_ads_report():
                         == "onsite_conversion.messaging_conversation_started_7d"
                     ):
                         contact = int(act["value"])
-
                 total_contact += contact
 
                 adset_id = ad.get("adset_id")
@@ -188,7 +243,7 @@ def get_ads_report():
     msg = f"""
 📊 ADS MANAGER
 
-Campaign đang hoạt động (có nhóm chạy): {len(campaigns_with_active_adsets)}
+Campaign đang hoạt động: {len(campaigns_with_active_adsets)}
 Nhóm quảng cáo đang hoạt động: {len(my_active_adsets)}
 
 💰 Chi tiêu trong ngày: {int(total_spend):,}đ
@@ -202,7 +257,6 @@ Nhóm quảng cáo đang hoạt động: {len(my_active_adsets)}
 
 
 def stop_my_ads():
-    # Lấy tất cả ADSET đang ACTIVE của bạn
     url_adsets = f"https://graph.facebook.com/v24.0/{AD_ACCOUNT_ID}/adsets"
 
     params_adsets = {
@@ -225,7 +279,6 @@ def stop_my_ads():
                 adset_id = adset["id"]
                 adset_name = adset.get("name")
 
-                # Tắt ADSET
                 stop_url = f"https://graph.facebook.com/v24.0/{adset_id}"
                 stop_res = requests.post(
                     stop_url, data={"access_token": META_TOKEN, "status": "PAUSED"}
@@ -245,21 +298,16 @@ def stop_my_ads():
 
 Đã tắt: {total_stopped} nhóm quảng cáo
 """
-
     send_telegram(msg)
 
 
 # ===== TELEGRAM COMMAND =====
-
-
 def check_telegram_commands():
-    global LAST_UPDATE_ID, last_command_time
+    global LAST_UPDATE_ID, last_command_time, last_command_text, processed_updates
 
-    # Tránh xử lý quá nhanh (trong vòng 2 giây)
-    current_time = time.time()
-    if current_time - last_command_time < 2:
-        return
-    last_command_time = current_time
+    # Dọn dẹp processed_updates cũ (giữ 100 ID gần nhất)
+    if len(processed_updates) > 100:
+        processed_updates = set(list(processed_updates)[-100:])
 
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getUpdates"
     params = {"timeout": 1, "allowed_updates": ["message"]}
@@ -276,26 +324,41 @@ def check_telegram_commands():
     if not data.get("ok"):
         return
 
-    processed = False
     for update in data.get("result", []):
-        LAST_UPDATE_ID = update["update_id"]
+        update_id = update["update_id"]
+
+        # Bỏ qua nếu đã xử lý
+        if update_id in processed_updates:
+            continue
+
+        LAST_UPDATE_ID = update_id
 
         if "message" not in update:
             continue
 
+        # Kiểm tra thời gian trùng lặp
+        current_time = time.time()
         text = update["message"].get("text", "")
 
-        if text == "/ads" and not processed:
+        # Nếu giống lệnh trước đó và trong vòng 2 giây thì bỏ qua
+        if text == last_command_text and current_time - last_command_time < 2:
+            processed_updates.add(update_id)
+            continue
+
+        if text == "/ads":
             send_telegram(get_ads_report())
-            processed = True
-        elif text == "/stopads" and not processed:
+            last_command_text = text
+            last_command_time = current_time
+        elif text == "/stopads":
             stop_my_ads()
-            processed = True
+            last_command_text = text
+            last_command_time = current_time
+
+        processed_updates.add(update_id)
 
 
 def get_payload():
     today = get_time_vn().strftime("%Y-%m-%d")
-
     return {
         "date": [f"{today}T00:00:00+07:00", f"{today}T23:59:59+07:00"],
         "tuNgay": f"{today}T00:00:00+07:00",
@@ -310,45 +373,39 @@ keep_alive()
 
 while True:
     try:
+        check_expiry_dates()
         check_telegram_commands()
 
         payload = get_payload()
-
         res = requests.post(url, headers=headers, cookies=cookies, json=payload)
-
         data = res.json()
 
         leads_today = []
         orders_today = []
         total_money = 0
-
         phone_first_owner = {}
 
         if "data" in data:
             for lead in data["data"]:
                 phone = lead.get("khachHangSoDienThoai")
                 marketing = lead.get("marketingUserName")
-
                 if phone not in phone_first_owner:
                     phone_first_owner[phone] = marketing
 
             for lead in data["data"]:
                 phone = lead.get("khachHangSoDienThoai")
                 marketing = lead.get("marketingUserName")
-
                 if marketing != MY_USERNAME:
                     continue
                 if lead.get("isKhachCu"):
                     continue
                 if phone_first_owner.get(phone) != MY_USERNAME:
                     continue
-
                 leads_today.append(lead)
 
             for lead in leads_today:
                 if lead.get("lgtDonHangTrangThaiChotDon") == 1:
                     orders_today.append(lead)
-
                     money = round(lead.get("lgtDonHangTienThuKhach") or 0)
                     total_money += money
 
@@ -356,24 +413,18 @@ while True:
                         name = lead.get("khachHangTen")
                         phone = lead.get("khachHangSoDienThoai")
                         sale = lead.get("saleDisplayName")
-
                         msg = f"""
 💰 {money:,.0f}đ
 👤 {name} | 📞 {phone}
 👩 Sale: {sale}
 """
-
                         send_telegram(msg)
                         sent_orders.add(lead["id"])
 
             now = get_time_vn()
-
             leads_count = len(leads_today)
             orders_count = len(orders_today)
-
-            cr = 0
-            if leads_count > 0:
-                cr = round((orders_count / leads_count) * 100, 2)
+            cr = 0 if leads_count == 0 else round((orders_count / leads_count) * 100, 2)
 
             report = f"""
 📊 BÁO CÁO ADS HÔM NAY
@@ -391,7 +442,6 @@ CR: {cr}%
             ):
                 send_telegram(report)
                 report_1140_sent = True
-
             if (
                 now.hour == 13
                 and now.minute == 30
@@ -400,7 +450,6 @@ CR: {cr}%
             ):
                 send_telegram(report)
                 report_1330_sent = True
-
             if (
                 now.hour == 15
                 and now.minute == 0
@@ -409,7 +458,6 @@ CR: {cr}%
             ):
                 send_telegram(report)
                 report_15_sent = True
-
             if (
                 now.hour == 17
                 and now.minute == 0
