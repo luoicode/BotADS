@@ -1,4 +1,4 @@
 requests
 flask
 gunicorn
-echo "pytz" >> requirements.txt
+pytz
