@@ -72,6 +72,7 @@ report_1140_sent = False
 report_1330_sent = False
 report_15_sent = False
 report_17_sent = False
+last_command_time = 0
 
 
 def send_telegram(msg):
@@ -249,22 +250,34 @@ def stop_my_ads():
 
 
 # ===== TELEGRAM COMMAND =====
+
+
 def check_telegram_commands():
-    global LAST_UPDATE_ID
+    global LAST_UPDATE_ID, last_command_time
+
+    # Tránh xử lý quá nhanh (trong vòng 2 giây)
+    current_time = time.time()
+    if current_time - last_command_time < 2:
+        return
+    last_command_time = current_time
 
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getUpdates"
-
-    params = {"timeout": 1}
+    params = {"timeout": 1, "allowed_updates": ["message"]}
 
     if LAST_UPDATE_ID:
         params["offset"] = LAST_UPDATE_ID + 1
 
-    res = requests.get(url, params=params).json()
-
-    if not res["ok"]:
+    try:
+        res = requests.get(url, params=params, timeout=5)
+        data = res.json()
+    except:
         return
 
-    for update in res["result"]:
+    if not data.get("ok"):
+        return
+
+    processed = False
+    for update in data.get("result", []):
         LAST_UPDATE_ID = update["update_id"]
 
         if "message" not in update:
@@ -272,10 +285,12 @@ def check_telegram_commands():
 
         text = update["message"].get("text", "")
 
-        if text == "/ads":
+        if text == "/ads" and not processed:
             send_telegram(get_ads_report())
-        elif text == "/stopads":
+            processed = True
+        elif text == "/stopads" and not processed:
             stop_my_ads()
+            processed = True
 
 
 def get_payload():
