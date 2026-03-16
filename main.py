@@ -276,6 +276,18 @@ Nhóm quảng cáo đang hoạt động: {len(my_active_adsets)}
 
 
 def stop_my_ads():
+    print(f"🔍 Bắt đầu tắt ads lúc {get_time_vn().strftime('%H:%M:%S')}")
+
+    # Kiểm tra token trước
+    url_check = f"https://graph.facebook.com/v24.0/{AD_ACCOUNT_ID}"
+    params_check = {"access_token": META_TOKEN, "fields": "name"}
+    check_res = requests.get(url_check, params=params_check)
+    print(f"📊 Kiểm tra token: {check_res.json()}")
+
+    if "error" in check_res.json():
+        send_telegram(f"❌ Token lỗi: {check_res.json()['error'].get('message')}")
+        return
+
     url_adsets = f"https://graph.facebook.com/v24.0/{AD_ACCOUNT_ID}/adsets"
 
     params_adsets = {
@@ -287,30 +299,68 @@ def stop_my_ads():
     res_adsets = requests.get(url_adsets, params=params_adsets)
     data_adsets = res_adsets.json()
 
+    print(f"📊 Response adsets: {json.dumps(data_adsets, indent=2)[:500]}")
+
+    if "error" in data_adsets:
+        print(f"❌ Lỗi Facebook: {data_adsets['error']}")
+        send_telegram(
+            f"❌ Lỗi Facebook: {data_adsets['error'].get('message', 'Unknown')}"
+        )
+        return
+
     stopped_adsets = []
+    my_name_lower = MY_NAME.lower()
+
+    print(f"🔍 Tìm campaign có tên chứa: '{my_name_lower}'")
 
     if "data" in data_adsets:
-        for adset in data_adsets["data"]:
-            if (
-                MY_NAME in adset.get("campaign_name", "")
-                and adset.get("status") == "ACTIVE"
-            ):
-                adset_id = adset["id"]
-                adset_name = adset.get("name")
+        print(f"📋 Tổng số adset trả về: {len(data_adsets['data'])}")
 
-                stop_url = f"https://graph.facebook.com/v24.0/{adset_id}"
-                stop_res = requests.post(
-                    stop_url, data={"access_token": META_TOKEN, "status": "PAUSED"}
-                )
+        for i, adset in enumerate(data_adsets["data"]):
+            campaign_name = adset.get("campaign_name", "")
+            status = adset.get("status", "")
+            adset_name = adset.get("name", "")
+            adset_id = adset.get("id", "")
 
-                if stop_res.json().get("success"):
-                    stopped_adsets.append(adset_name)
+            print(f"\n--- Adset {i+1} ---")
+            print(f"  ID: {adset_id}")
+            print(f"  Tên adset: {adset_name}")
+            print(f"  Campaign: {campaign_name}")
+            print(f"  Status: {status}")
+
+            # Kiểm tra campaign có chứa tên không
+            if my_name_lower in campaign_name.lower():
+                print(f"  ✅ Campaign có chứa '{MY_NAME}'")
+
+                if status == "ACTIVE":
+                    print(f"  🔴 ĐANG ACTIVE - sẽ tắt")
+
+                    stop_url = f"https://graph.facebook.com/v24.0/{adset_id}"
+                    stop_res = requests.post(
+                        stop_url, data={"access_token": META_TOKEN, "status": "PAUSED"}
+                    )
+
+                    result = stop_res.json()
+                    print(f"  Kết quả tắt: {result}")
+
+                    if result.get("success"):
+                        stopped_adsets.append(adset_name)
+                        print(f"  ✅ Đã tắt thành công")
+                    else:
+                        print(f"  ❌ Lỗi khi tắt: {result}")
+                        if "error" in result:
+                            send_telegram(
+                                f"❌ Lỗi tắt adset {adset_name}: {result['error'].get('message')}"
+                            )
+                else:
+                    print(f"  ⏭️ Không active (status: {status})")
+            else:
+                print(f"  ❌ Không chứa '{MY_NAME}'")
+                # In thử campaign name để kiểm tra
+                print(f"     Campaign name thực tế: '{campaign_name}'")
 
     total_stopped = len(stopped_adsets)
-
-    print(
-        f"✅ Đã tắt {total_stopped} nhóm quảng cáo lúc {get_time_vn().strftime('%H:%M:%S')}"
-    )
+    print(f"\n✅ Đã tắt {total_stopped} nhóm quảng cáo")
 
     msg = f"""
 🛑 ĐÃ TẮT NHÓM QUẢNG CÁO
