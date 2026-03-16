@@ -79,6 +79,9 @@ EXPIRY_CHECKED = False
 META_EXPIRY = 1778780378  # 15/05/2026
 SANDWICH_EXPIRY = 1774047762  # 20/03/2026
 
+ads_cache = {"data": None, "time": 0}
+CACHE_TIME = 60  # Cache 60 giây
+
 
 def check_expiry_dates():
     """Kiểm tra và thông báo các mục sắp hết hạn"""
@@ -145,6 +148,16 @@ def send_telegram(msg):
 
 # ===== ADS REPORT =====
 def get_ads_report():
+    global ads_cache
+
+    # Kiểm tra cache
+    now = time.time()
+    if ads_cache["data"] and now - ads_cache["time"] < CACHE_TIME:
+        print(f"📦 Dùng cache ADS ({(now - ads_cache['time']):.0f} giây trước)")
+        return ads_cache["data"]
+
+    print("🔄 Đang lấy dữ liệu mới từ Facebook...")
+
     # ===== LẤY DANH SÁCH CAMPAIGN =====
     url_campaigns = f"https://graph.facebook.com/v24.0/{AD_ACCOUNT_ID}/campaigns"
 
@@ -238,8 +251,6 @@ def get_ads_report():
     bad_240 = list(set(bad_240))
     bad_360 = list(set(bad_360))
 
-    print(f"✅ Đã gửi báo cáo ADS lúc {get_time_vn().strftime('%H:%M:%S')}")
-
     msg = f"""
 📊 ADS MANAGER
 
@@ -253,6 +264,14 @@ Nhóm quảng cáo đang hoạt động: {len(my_active_adsets)}
 ⚠️ >240k ≤1 tin: {len(bad_240)}
 ⚠️ >360k ≤3 tin: {len(bad_360)}
 """
+
+    # Lưu vào cache
+    ads_cache["data"] = msg
+    ads_cache["time"] = now
+
+    print(
+        f"✅ Đã lấy dữ liệu mới và lưu cache lúc {get_time_vn().strftime('%H:%M:%S')}"
+    )
     return msg
 
 
