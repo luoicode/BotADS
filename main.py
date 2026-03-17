@@ -771,6 +771,9 @@ while True:
             valid_leads = filter_leads_data(data["data"])
             leads_today = valid_leads
 
+            # DEBUG: In tổng số leads sau khi lọc
+            print(f"\n📊 Tổng số leads sau lọc: {len(leads_today)}")
+
             # Xử lý đơn hàng
             for lead in leads_today:
                 if lead.get("lgtDonHangTrangThaiChotDon") == 1:
@@ -779,12 +782,32 @@ while True:
                     total_money += money
 
                     if lead["id"] not in sent_orders:
-                        name = lead.get("khachHangTen")
-                        phone = lead.get("khachHangSoDienThoai")
-                        sale = lead.get("saleDisplayName")
+                        # DEBUG: In thông tin đơn hàng
+                        print(f"\n=== ĐƠN HÀNG MỚI ===")
+                        print(f"ID: {lead['id']}")
+                        print(f"SĐT: {lead.get('khachHangSoDienThoai')}")
+                        print(f"Tiền: {money:,}đ")
+                        print(f"isKhachCu: {lead.get('isKhachCu')}")
+                        print(f"Marketing: {lead.get('marketingUserName')}")
 
                         # Lấy thông tin sản phẩm
                         product_name = get_product_from_lead(lead)
+                        print(f"Sản phẩm: {product_name}")
+
+                        # In chi tiết sanPhamInfo để debug
+                        san_pham_info = lead.get("sanPhamInfo", [])
+                        if san_pham_info:
+                            print(
+                                f"Chi tiết SP: {json.dumps(san_pham_info, ensure_ascii=False)}"
+                            )
+                        else:
+                            print("Không có sanPhamInfo")
+
+                        print(f"Landing: {lead.get('landingTen', '')}")
+
+                        name = lead.get("khachHangTen", "")
+                        phone = lead.get("khachHangSoDienThoai", "")
+                        sale = lead.get("saleDisplayName", "")
 
                         msg = f"""
 💰 {money:,.0f}đ | {product_name}
@@ -800,6 +823,11 @@ while True:
             orders_count = len(orders_today)
             cr = 0 if leads_count == 0 else round((orders_count / leads_count) * 100, 2)
 
+            # DEBUG: In tổng kết
+            print(
+                f"\n📈 Tổng kết: {leads_count} leads, {orders_count} đơn, {total_money:,}đ, CR: {cr}%"
+            )
+
             # Báo cáo tự động theo giờ
             if (
                 now.hour == 11
@@ -807,6 +835,7 @@ while True:
                 and now.second < 30
                 and not report_1140_sent
             ):
+                print("⏰ Gửi báo cáo 11:40")
                 send_telegram(get_revenue_report())
                 report_1140_sent = True
             if (
@@ -815,6 +844,7 @@ while True:
                 and now.second < 30
                 and not report_1330_sent
             ):
+                print("⏰ Gửi báo cáo 13:30")
                 send_telegram(get_revenue_report())
                 report_1330_sent = True
             if (
@@ -823,6 +853,7 @@ while True:
                 and now.second < 30
                 and not report_15_sent
             ):
+                print("⏰ Gửi báo cáo 15:00")
                 send_telegram(get_revenue_report())
                 report_15_sent = True
             if (
@@ -831,6 +862,7 @@ while True:
                 and now.second < 30
                 and not report_17_sent
             ):
+                print("⏰ Gửi báo cáo 17:00")
                 send_telegram(get_revenue_report())
                 report_17_sent = True
 
@@ -841,6 +873,9 @@ while True:
         )
 
     except Exception as e:
-        print(f"\nLỗi lúc {get_time_vn().strftime('%H:%M:%S')}: {e}")
+        print(f"\n❌ Lỗi lúc {get_time_vn().strftime('%H:%M:%S')}: {e}")
+        import traceback
+
+        traceback.print_exc()
 
     time.sleep(30)
