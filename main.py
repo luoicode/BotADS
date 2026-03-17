@@ -474,62 +474,42 @@ while True:
                     continue
                 leads_today.append(lead)
 
-            for lead in leads_today:
-                if lead.get("lgtDonHangTrangThaiChotDon") == 1:
-                    orders_today.append(lead)
-                    money = round(lead.get("lgtDonHangTienThuKhach") or 0)
-                    total_money += money
+                for lead in leads_today:
+                    if lead.get("lgtDonHangTrangThaiChotDon") == 1:
+                        orders_today.append(lead)
+                        money = round(lead.get("lgtDonHangTienThuKhach") or 0)
+                        total_money += money
 
-                    if lead["id"] not in sent_orders:
                         if lead["id"] not in sent_orders:
-                            # Debug: in ra cấu trúc lead để xem field nào chứa sản phẩm
-                            print(
-                                f"🔍 Lead ID {lead['id']}: {json.dumps(lead, indent=2, ensure_ascii=False)[:1000]}"
-                            )
+                            name = lead.get("khachHangTen")
+                            phone = lead.get("khachHangSoDienThoai")
+                            sale = lead.get("saleDisplayName")
 
-                        # ... phần còn lại
-                        name = lead.get("khachHangTen")
-                        phone = lead.get("khachHangSoDienThoai")
-                        sale = lead.get("saleDisplayName")
+                            # Lấy thông tin sản phẩm từ sanPhamInfo
+                            products = lead.get("sanPhamInfo") or []
+                            product_name = ""
 
-                        # Lấy thông tin sản phẩm từ đơn hàng
-                        # Thử lấy từ các field có thể chứa sản phẩm
-                        don_hang = lead.get("lgtDonHang", {})
-                        chi_tiet_don_hang = (
-                            don_hang.get("chiTietDonHang", []) if don_hang else []
-                        )
-
-                        product_text = ""
-                        if chi_tiet_don_hang:
-                            for ct in chi_tiet_don_hang:
-                                ten_sp = (
-                                    ct.get("tenSanPham")
-                                    or ct.get("sanPhamTen")
-                                    or "Không có tên"
+                            if isinstance(products, list) and products:
+                                first = products[0] or {}
+                                product_name = (
+                                    first.get("tenSanPham")
+                                    or first.get("sanPhamTen")
+                                    or first.get("productName")
+                                    or first.get("ten")
+                                    or ""
                                 )
-                                so_luong = ct.get("soLuong") or 1
-                                don_gia = ct.get("donGia") or 0
-                                thanh_tien = ct.get("thanhTien") or 0
-                                product_text += f"\n  - {ten_sp} x{so_luong} ({don_gia:,.0f}đ) = {thanh_tien:,.0f}đ"
-                        else:
-                            # Thử lấy từ các field khác nếu có
-                            san_pham = (
-                                lead.get("lgtSanPham")
-                                or lead.get("tenSanPham")
-                                or lead.get("sanPham")
-                            )
-                            if san_pham:
-                                product_text = f"\n  - {san_pham}"
-                            else:
-                                product_text = "\n  (Không có thông tin sản phẩm)"
+                            # Nếu vẫn không có thì dùng tên landing
+                            if not product_name:
+                                product_name = lead.get("landingTen", "")
 
-                        msg = f"""
-            💰 {money:,.0f}đ | 📦 Sản phẩm:{product_text}
-            👤 {name} | 📞 {phone}
-            👩 Sale: {sale}
-            """
-                        send_telegram(msg)
-                        sent_orders.add(lead["id"])
+                            msg = f"""
+                💰 {money:,.0f}đ | {product_name}
+                👤 {name} | 📞 {phone}
+                👩 Sale: {sale}
+                """
+
+                            send_telegram(msg)
+                            sent_orders.add(lead["id"])
 
             now = get_time_vn()
             leads_count = len(leads_today)
