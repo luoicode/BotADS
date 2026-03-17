@@ -379,6 +379,70 @@ def get_revenue_report(product_filter=None):
     return msg
 
 
+def tra_cuoc_hoi_thoai(sdt):
+    """Tra cứu lịch sử hội thoại và ghi chú của sale theo số điện thoại"""
+    try:
+        # Chuẩn hóa số điện thoại
+        sdt = sdt.replace(" ", "").replace("+84", "0").replace("+", "")
+        if not sdt.startswith("0"):
+            sdt = "0" + sdt
+
+        # Lấy dữ liệu từ API
+        payload = get_payload()
+        res = requests.post(url, headers=headers, cookies=cookies, json=payload)
+        data = res.json()
+
+        if "data" not in data:
+            return f"❌ Không tìm thấy số {sdt}"
+
+        # Lọc các lead có số điện thoại này
+        leads = []
+        for lead in data["data"]:
+            lead_sdt = lead.get("khachHangSoDienThoai", "").replace(" ", "")
+            if lead_sdt == sdt:
+                leads.append(lead)
+
+        if not leads:
+            return f"❌ Không tìm thấy số {sdt}"
+
+        # Sắp xếp theo thời gian
+        leads = sorted(leads, key=lambda x: x.get("ngayTao", ""))
+
+        msg = f"📞 {sdt}\n"
+        msg += "─" * 25 + "\n"
+
+        for i, lead in enumerate(leads, 1):
+            # Thời gian
+            thoi_gian = (
+                lead.get("ngayTao", "")[11:16] if lead.get("ngayTao") else "??:??"
+            )
+
+            # Trạng thái
+            if lead.get("lgtDonHangTrangThaiChotDon") == 1:
+                trang_thai = "✅ CHỐT ĐƠN"
+            else:
+                trang_thai = "⏳ Chưa chốt"
+
+            # Tin nhắn ghi chú
+            tin_nhan = lead.get("lastMessage", "")
+            if not tin_nhan:
+                tin_nhan = "Không có ghi chú"
+
+            # Sản phẩm
+            product_name = get_product_from_lead(lead)
+
+            msg += f"Lần {i} - {thoi_gian}\n"
+            msg += f"Trạng thái: {trang_thai}\n"
+            msg += f"📝 {tin_nhan}\n"
+            msg += f"📦 {product_name}\n"
+            msg += "─" * 20 + "\n"
+
+        return msg
+
+    except Exception as e:
+        return f"❌ Lỗi tra cứu: {str(e)}"
+
+
 # ===== ADS REPORT =====
 def get_ads_report():
     global ads_cache
@@ -816,6 +880,16 @@ def check_telegram_commands():
                 stop_my_ads()
                 last_command_text = text
                 last_command_time = current_time
+            elif text.startswith("/tra "):
+                parts = text.split()
+                if len(parts) == 2:
+                    sdt = parts[1]
+                    print(
+                        f"📨 Xử lý /tra {sdt} lúc {get_time_vn().strftime('%H:%M:%S')}"
+                    )
+                    send_telegram(tra_cuoc_hoi_thoai(sdt))
+                    last_command_text = text
+                    last_command_time = current_time
 
         LAST_UPDATE_ID = update_id
 
