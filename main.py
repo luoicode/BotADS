@@ -663,6 +663,67 @@ def stop_product_ads(product_name):
     send_telegram(msg)
 
 
+def stop_my_ads():
+    """Tắt TẤT CẢ nhóm quảng cáo đang chạy"""
+    print(f"🔍 Bắt đầu tắt tất cả ads lúc {get_time_vn().strftime('%H:%M:%S')}")
+
+    # Kiểm tra token trước
+    url_check = f"https://graph.facebook.com/v24.0/{AD_ACCOUNT_ID}"
+    params_check = {"access_token": META_TOKEN, "fields": "name"}
+    check_res = requests.get(url_check, params=params_check)
+
+    if "error" in check_res.json():
+        send_telegram(f"❌ Token lỗi: {check_res.json()['error'].get('message')}")
+        return
+
+    # Lấy danh sách adset
+    url_adsets = f"https://graph.facebook.com/v24.0/{AD_ACCOUNT_ID}/adsets"
+    params_adsets = {
+        "access_token": META_TOKEN,
+        "fields": "id,name,campaign_name,status",
+        "limit": 200,
+    }
+
+    res_adsets = requests.get(url_adsets, params=params_adsets)
+    data_adsets = res_adsets.json()
+
+    if "error" in data_adsets:
+        send_telegram(
+            f"❌ Lỗi Facebook: {data_adsets['error'].get('message', 'Unknown')}"
+        )
+        return
+
+    stopped_adsets = []
+    my_name_lower = MY_NAME.lower()
+
+    if "data" in data_adsets:
+        for adset in data_adsets["data"]:
+            campaign_name = adset.get("campaign_name", "")
+            status = adset.get("status", "")
+            adset_name = adset.get("name", "")
+            adset_id = adset.get("id", "")
+
+            # Tắt tất cả adset của bạn (có tên campaign chứa MY_NAME)
+            if my_name_lower in campaign_name.lower() and status == "ACTIVE":
+                stop_url = f"https://graph.facebook.com/v24.0/{adset_id}"
+                stop_res = requests.post(
+                    stop_url, data={"access_token": META_TOKEN, "status": "PAUSED"}
+                )
+
+                result = stop_res.json()
+                if result.get("success"):
+                    stopped_adsets.append(adset_name)
+
+    total_stopped = len(stopped_adsets)
+
+    msg = f"""
+🛑 ĐÃ TẮT TẤT CẢ NHÓM QUẢNG CÁO
+
+Đã tắt: {total_stopped} nhóm quảng cáo
+"""
+    send_telegram(msg)
+
+
 # ===== TELEGRAM COMMAND =====
 def check_telegram_commands():
     global LAST_UPDATE_ID, last_command_time, last_command_text
