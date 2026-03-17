@@ -35,7 +35,7 @@ def keep_alive():
 
 
 # ===== META ADS =====
-META_TOKEN = "EAAafzAo8hZAgBQ3d6lchr3tAZALBMrfkpTlrVYHuc1kKZC8aHjzrvxZBWUd5C2NTRVWEMH8ZAKLzueydS4U1dvZAl6g3CDe9ZClopv26mAVUknsbVXcxnVSfSnKdzvP3GSZCy9OOZBFNQgxZAe6ILAHZCBjkQ8ZAt3HgAhXeR6PikxcoHRxzWrhnNI1DacFmqevDUz25ydZAY4Gb1bQMfOKYlUdRXP5Ig4VMRAytX7UPt8rldS04hZAqWwxx2YYztTTH8BfxN7cWxlohh7FiGxUWHU12nnrz9P"
+META_TOKEN = "EAAafzAo8hZAgBQ3cRZCCs3KXeKZBaSLMnp3uSBs7gzqgf3UF7QrQNA7nqXduOpfB0PlCTHjvhoxP39VKZCO6hhqoT0Goe2Ym8T7XRKIsc4sRhzHL7CNUVCh2XPEj1ZAxCfZBbvtYKMQ8dVZAywpXhdnYhqZA3a36ZA9fXufUUZCYPdlyh2xnK1uRpzRU3mooMNfw0d"
 AD_ACCOUNT_ID = "act_460351299625267"
 MY_NAME = "Nguyễn Hữu Huy"
 
@@ -484,11 +484,44 @@ while True:
                         name = lead.get("khachHangTen")
                         phone = lead.get("khachHangSoDienThoai")
                         sale = lead.get("saleDisplayName")
+
+                        # Lấy thông tin sản phẩm từ đơn hàng
+                        # Thử lấy từ các field có thể chứa sản phẩm
+                        don_hang = lead.get("lgtDonHang", {})
+                        chi_tiet_don_hang = (
+                            don_hang.get("chiTietDonHang", []) if don_hang else []
+                        )
+
+                        product_text = ""
+                        if chi_tiet_don_hang:
+                            for ct in chi_tiet_don_hang:
+                                ten_sp = (
+                                    ct.get("tenSanPham")
+                                    or ct.get("sanPhamTen")
+                                    or "Không có tên"
+                                )
+                                so_luong = ct.get("soLuong") or 1
+                                don_gia = ct.get("donGia") or 0
+                                thanh_tien = ct.get("thanhTien") or 0
+                                product_text += f"\n  - {ten_sp} x{so_luong} ({don_gia:,.0f}đ) = {thanh_tien:,.0f}đ"
+                        else:
+                            # Thử lấy từ các field khác nếu có
+                            san_pham = (
+                                lead.get("lgtSanPham")
+                                or lead.get("tenSanPham")
+                                or lead.get("sanPham")
+                            )
+                            if san_pham:
+                                product_text = f"\n  - {san_pham}"
+                            else:
+                                product_text = "\n  (Không có thông tin sản phẩm)"
+
                         msg = f"""
-💰 {money:,.0f}đ
-👤 {name} | 📞 {phone}
-👩 Sale: {sale}
-"""
+            💰 {money:,.0f}đ
+            👤 {name} | 📞 {phone}
+            👩 Sale: {sale}
+            📦 Sản phẩm:{product_text}
+            """
                         send_telegram(msg)
                         sent_orders.add(lead["id"])
 
