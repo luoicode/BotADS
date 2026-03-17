@@ -311,25 +311,25 @@ def get_revenue_report(product_filter=None):
             return f"Không có dữ liệu cho {product_filter}"
 
     # Tạo báo cáo tổng hợp
-    msg = "📊 **BÁO CÁO DOANH THU HÔM NAY**\n\n"
+    msg = "📊 BÁO CÁO DOANH THU HÔM NAY\n\n"
 
     # Tâm Não An + Bảo Thần Khang
     tna_stats = product_stats["Tâm Não An"]
-    msg += "**🧠 Tâm Não An + Bảo Thần Khang**\n"
+    msg += "- 🧠 Tâm Não An + Bảo Thần Khang\n"
     msg += f"  • Lead: {tna_stats['leads']}\n"
     msg += f"  • Đơn: {tna_stats['orders']}\n"
     msg += f"  • Doanh thu: {tna_stats['revenue']:,}đ\n\n"
 
     # Bảo Khớp Khang
     bkk_stats = product_stats["Bảo Khớp Khang"]
-    msg += "**🦴 Bảo Khớp Khang**\n"
+    msg += "🦴 Bảo Khớp Khang\n"
     msg += f"  • Lead: {bkk_stats['leads']}\n"
     msg += f"  • Đơn: {bkk_stats['orders']}\n"
     msg += f"  • Doanh thu: {bkk_stats['revenue']:,}đ\n\n"
 
     # Heart Gold
     hg_stats = product_stats["Heart Gold"]
-    msg += "**💛 Heart Gold**\n"
+    msg += "💛 Heart Gold\n"
     msg += f"  • Lead: {hg_stats['leads']}\n"
     msg += f"  • Đơn: {hg_stats['orders']}\n"
     msg += f"  • Doanh thu: {hg_stats['revenue']:,}đ\n\n"
@@ -348,7 +348,7 @@ def get_revenue_report(product_filter=None):
     total_revenue = sum(s["revenue"] for s in product_stats.values())
     cr = (total_orders / total_leads * 100) if total_leads > 0 else 0
 
-    msg += "**📈 TỔNG KẾT**\n"
+    msg += "📈 TỔNG KẾT\n"
     msg += f"  • Tổng Lead: {total_leads}\n"
     msg += f"  • Tổng Đơn: {total_orders}\n"
     msg += f"  • Tổng Doanh thu: {total_revenue:,}đ\n"
@@ -773,9 +773,6 @@ while True:
             valid_leads = filter_leads_data(data["data"])
             leads_today = valid_leads
 
-            # DEBUG: In tổng số leads sau khi lọc
-            print(f"\n📊 Tổng số leads sau lọc: {len(leads_today)}")
-
             # Xử lý đơn hàng
             for lead in leads_today:
                 if lead.get("lgtDonHangTrangThaiChotDon") == 1:
@@ -784,28 +781,8 @@ while True:
                     total_money += money
 
                     if lead["id"] not in sent_orders:
-                        # DEBUG: In thông tin đơn hàng
-                        print(f"\n=== ĐƠN HÀNG MỚI ===")
-                        print(f"ID: {lead['id']}")
-                        print(f"SĐT: {lead.get('khachHangSoDienThoai')}")
-                        print(f"Tiền: {money:,}đ")
-                        print(f"isKhachCu: {lead.get('isKhachCu')}")
-                        print(f"Marketing: {lead.get('marketingUserName')}")
-
                         # Lấy thông tin sản phẩm
                         product_name = get_product_from_lead(lead)
-                        print(f"Sản phẩm: {product_name}")
-
-                        # In chi tiết sanPhamInfo để debug
-                        san_pham_info = lead.get("sanPhamInfo", [])
-                        if san_pham_info:
-                            print(
-                                f"Chi tiết SP: {json.dumps(san_pham_info, ensure_ascii=False)}"
-                            )
-                        else:
-                            print("Không có sanPhamInfo")
-
-                        print(f"Landing: {lead.get('landingTen', '')}")
 
                         name = lead.get("khachHangTen", "")
                         phone = lead.get("khachHangSoDienThoai", "")
@@ -825,11 +802,6 @@ while True:
             orders_count = len(orders_today)
             cr = 0 if leads_count == 0 else round((orders_count / leads_count) * 100, 2)
 
-            # DEBUG: In tổng kết
-            print(
-                f"\n📈 Tổng kết: {leads_count} leads, {orders_count} đơn, {total_money:,}đ, CR: {cr}%"
-            )
-
             # Báo cáo tự động theo giờ
             if (
                 now.hour == 11
@@ -837,47 +809,57 @@ while True:
                 and now.second < 30
                 and not report_1140_sent
             ):
-                print("⏰ Gửi báo cáo 11:40")
                 send_telegram(get_revenue_report())
                 report_1140_sent = True
+                print(
+                    f"⏰ Đã gửi báo cáo 11:40 - {leads_count} leads, {orders_count} đơn, {total_money:,}đ"
+                )
+
             if (
                 now.hour == 13
                 and now.minute == 30
                 and now.second < 30
                 and not report_1330_sent
             ):
-                print("⏰ Gửi báo cáo 13:30")
                 send_telegram(get_revenue_report())
                 report_1330_sent = True
+                print(
+                    f"⏰ Đã gửi báo cáo 13:30 - {leads_count} leads, {orders_count} đơn, {total_money:,}đ"
+                )
+
             if (
                 now.hour == 15
                 and now.minute == 0
                 and now.second < 30
                 and not report_15_sent
             ):
-                print("⏰ Gửi báo cáo 15:00")
                 send_telegram(get_revenue_report())
                 report_15_sent = True
+                print(
+                    f"⏰ Đã gửi báo cáo 15:00 - {leads_count} leads, {orders_count} đơn, {total_money:,}đ"
+                )
+
             if (
                 now.hour == 17
                 and now.minute == 0
                 and now.second < 30
                 and not report_17_sent
             ):
-                print("⏰ Gửi báo cáo 17:00")
                 send_telegram(get_revenue_report())
                 report_17_sent = True
+                print(
+                    f"⏰ Đã gửi báo cáo 17:00 - {leads_count} leads, {orders_count} đơn, {total_money:,}đ"
+                )
 
+        # Hiển thị trạng thái mỗi 30 giây
+        now = get_time_vn()
         print(
-            f"\r🟢 Bot running | {get_time_vn().strftime('%H:%M:%S')}",
+            f"\r🟢 [{now.strftime('%H:%M:%S')}] Bot đang chạy | Lead hôm nay: {len(leads_today)} | Đơn: {len(orders_today)} | {total_money:,.0f}đ",
             end="",
             flush=True,
         )
 
     except Exception as e:
         print(f"\n❌ Lỗi lúc {get_time_vn().strftime('%H:%M:%S')}: {e}")
-        import traceback
-
-        traceback.print_exc()
 
     time.sleep(30)
