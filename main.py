@@ -82,6 +82,39 @@ SANDWICH_EXPIRY = 1774047762  # 20/03/2026
 ads_cache = {"data": None, "time": 0}
 CACHE_TIME = 60  # Cache 60 giây
 
+# ===== SẢN PHẨM =====
+PRODUCTS = {
+    "Tâm Não An": {
+        "keywords": [
+            "Tâm Não An",
+            "Tâm Não",
+            "Tâm Não An -",
+            "Bảo Thần Khang",
+            "Bảo Thần",
+            "BTK",
+        ],
+        "cmd_stop": "/stopadstna",
+        "cmd_report": "/baocaotna",
+        "include_gift": True,  # Có bao gồm Bảo Thần Khang
+    },
+    "Bảo Khớp Khang": {
+        "keywords": ["Bảo Khớp Khang", "Bảo Khớp", "Bảo Khớp Khang -", "BKK"],
+        "cmd_stop": "/stopadsbkk",
+        "cmd_report": "/baocaobkk",
+        "include_gift": False,
+    },
+    "Heart Gold": {
+        "keywords": ["Heart Gold", "Heart Gold -", "Heart", "HG"],
+        "cmd_stop": "/stopadshg",
+        "cmd_report": "/baocaohg",
+        "include_gift": False,
+    },
+}
+
+# Cache cho báo cáo doanh thu
+revenue_cache = {"data": None, "time": 0}
+REVENUE_CACHE_TIME = 300  # 5 phút
+
 
 def check_expiry_dates():
     """Kiểm tra và thông báo các mục sắp hết hạn"""
@@ -144,6 +177,184 @@ def send_telegram(msg):
         requests.post(url_tele, data={"chat_id": CHAT_ID, "text": msg})
     except:
         print(f"Không gửi được Telegram lúc {get_time_vn().strftime('%H:%M:%S')}")
+
+
+def get_product_from_lead(lead):
+    """Xác định sản phẩm từ lead dựa trên tên sản phẩm hoặc landing"""
+    # Kiểm tra từ sanPhamInfo
+    products = lead.get("sanPhamInfo") or []
+    if isinstance(products, list) and products:
+        first = products[0] or {}
+        product_name = (
+            first.get("tenSanPham")
+            or first.get("sanPhamTen")
+            or first.get("productName")
+            or first.get("ten")
+            or ""
+        )
+
+        # Kiểm tra từng sản phẩm
+        for prod_key, prod_info in PRODUCTS.items():
+            for keyword in prod_info["keywords"]:
+                if keyword.lower() in product_name.lower():
+                    return prod_key
+
+    # Nếu không có, kiểm tra từ landingTen
+    landing = lead.get("landingTen", "")
+    for prod_key, prod_info in PRODUCTS.items():
+        for keyword in prod_info["keywords"]:
+            if keyword.lower() in landing.lower():
+                return prod_key
+
+    return "Khác"
+
+
+def filter_leads_data(leads_data):
+    """Lọc leads theo các tiêu chí: không khách cũ, không trùng marketing khác, không trùng số của mình"""
+    phone_first_owner = {}
+    valid_leads = []
+
+    # Xác định marketing đầu tiên của mỗi số
+    for lead in leads_data:
+        phone = lead.get("khachHangSoDienThoai")
+        marketing = lead.get("marketingUserName")
+        if phone and marketing and phone not in phone_first_owner:
+            phone_first_owner[phone] = marketing
+
+    # Lọc lead hợp lệ
+    for lead in leads_data:
+        phone = lead.get("khachHangSoDienThoai")
+        marketing = lead.get("marketingUserName")
+
+        # Bỏ qua nếu không phải lead của mình
+        if marketing != MY_USERNAME:
+            continue
+
+        # Bỏ qua khách cũ
+        if lead.get("isKhachCu"):
+            continue
+
+        # Bỏ qua nếu số điện thoại đã có marketing khác trước đó
+        if phone_first_owner.get(phone) != MY_USERNAME:
+            continue
+
+        # Xử lý trùng số trong chính mình: chỉ lấy lead đầu tiên của mỗi số
+        existing = next(
+            (l for l in valid_leads if l.get("khachHangSoDienThoai") == phone), None
+        )
+        if not existing:
+            valid_leads.append(lead)
+
+    return valid_leads
+
+
+def get_revenue_report(product_filter=None):
+    """Lấy báo cáo doanh thu, có thể lọc theo sản phẩm"""
+    global revenue_cache
+
+    # Kiểm tra cache nếu là báo cáo tổng hợp
+    now = time.time()
+    if (
+        not product_filter
+        and revenue_cache["data"]
+        and now - revenue_cache["time"] < REVENUE_CACHE_TIME
+    ):
+        return revenue_cache["data"]
+
+    # Lấy dữ liệu từ API
+    payload = get_payload()
+    res = requests.post(url, headers=headers, cookies=cookies, json=payload)
+    data = res.json()
+
+    if "data" not in data:
+        return "Không có dữ liệu"
+
+    # Lọc leads hợp lệ
+    valid_leads = filter_leads_data(data["data"])
+
+    # Khởi tạo báo cáo theo sản phẩm
+    product_stats = {}
+    for prod_key in PRODUCTS.keys():
+        product_stats[prod_key] = {"leads": 0, "orders": 0, "revenue": 0}
+    product_stats["Khác"] = {"leads": 0, "orders": 0, "revenue": 0}
+
+    # Xử lý từng lead
+    for lead in valid_leads:
+        product = get_product_from_lead(lead)
+
+        # Gộp Bảo Thần Khang vào Tâm Não An nếu có include_gift
+        if product == "Bảo Thần Khang" and PRODUCTS["Tâm Não An"]["include_gift"]:
+            product = "Tâm Não An"
+
+        product_stats[product]["leads"] += 1
+
+        # Kiểm tra đơn hàng
+        if lead.get("lgtDonHangTrangThaiChotDon") == 1:
+            product_stats[product]["orders"] += 1
+            money = round(lead.get("lgtDonHangTienThuKhach") or 0)
+            product_stats[product]["revenue"] += money
+
+    # Nếu có filter, chỉ trả về sản phẩm đó
+    if product_filter:
+        if product_filter in product_stats:
+            stats = product_stats[product_filter]
+            return f"""📊 BÁO CÁO {product_filter.upper()}
+
+• Lead: {stats['leads']}
+• Đơn: {stats['orders']}
+• Doanh thu: {stats['revenue']:,}đ"""
+        else:
+            return f"Không có dữ liệu cho {product_filter}"
+
+    # Tạo báo cáo tổng hợp
+    msg = "📊 **BÁO CÁO DOANH THU HÔM NAY**\n\n"
+
+    # Tâm Não An + Bảo Thần Khang
+    tna_stats = product_stats["Tâm Não An"]
+    msg += "**🧠 Tâm Não An + Bảo Thần Khang**\n"
+    msg += f"  • Lead: {tna_stats['leads']}\n"
+    msg += f"  • Đơn: {tna_stats['orders']}\n"
+    msg += f"  • Doanh thu: {tna_stats['revenue']:,}đ\n\n"
+
+    # Bảo Khớp Khang
+    bkk_stats = product_stats["Bảo Khớp Khang"]
+    msg += "**🦴 Bảo Khớp Khang**\n"
+    msg += f"  • Lead: {bkk_stats['leads']}\n"
+    msg += f"  • Đơn: {bkk_stats['orders']}\n"
+    msg += f"  • Doanh thu: {bkk_stats['revenue']:,}đ\n\n"
+
+    # Heart Gold
+    hg_stats = product_stats["Heart Gold"]
+    msg += "**💛 Heart Gold**\n"
+    msg += f"  • Lead: {hg_stats['leads']}\n"
+    msg += f"  • Đơn: {hg_stats['orders']}\n"
+    msg += f"  • Doanh thu: {hg_stats['revenue']:,}đ\n\n"
+
+    # Khác
+    other_stats = product_stats["Khác"]
+    if other_stats["leads"] > 0:
+        msg += "**📦 Sản phẩm khác**\n"
+        msg += f"  • Lead: {other_stats['leads']}\n"
+        msg += f"  • Đơn: {other_stats['orders']}\n"
+        msg += f"  • Doanh thu: {other_stats['revenue']:,}đ\n\n"
+
+    # Tổng kết
+    total_leads = sum(s["leads"] for s in product_stats.values())
+    total_orders = sum(s["orders"] for s in product_stats.values())
+    total_revenue = sum(s["revenue"] for s in product_stats.values())
+    cr = (total_orders / total_leads * 100) if total_leads > 0 else 0
+
+    msg += "**📈 TỔNG KẾT**\n"
+    msg += f"  • Tổng Lead: {total_leads}\n"
+    msg += f"  • Tổng Đơn: {total_orders}\n"
+    msg += f"  • Tổng Doanh thu: {total_revenue:,}đ\n"
+    msg += f"  • CR: {cr:.2f}%"
+
+    # Lưu cache
+    revenue_cache["data"] = msg
+    revenue_cache["time"] = now
+
+    return msg
 
 
 # ===== ADS REPORT =====
@@ -248,14 +459,12 @@ def get_ads_report():
                 break
 
     # Lấy thông tin adset
-    adset_to_campaign = {}
     if "data" in data_adsets:
         for adset in data_adsets["data"]:
             campaign_id = adset["campaign_id"]
             if campaign_id in campaign_to_product:
                 product_name = campaign_to_product[campaign_id]
                 product_reports[product_name]["has_data"] = True
-                adset_to_campaign[adset["id"]] = campaign_id
 
                 if adset.get("status") == "ACTIVE":
                     product_reports[product_name]["adsets_active"].add(adset["id"])
@@ -295,7 +504,6 @@ def get_ads_report():
                 # Kiểm tra các adset đang active
                 if adset_id in product_reports[product_name]["adsets_active"]:
                     adset_name = ad.get("adset_name", "")
-                    cost_per_message = spend / contact if contact > 0 else spend
 
                     if spend > 120000 and contact == 0:
                         product_reports[product_name]["bad_120"].add(adset_name)
@@ -322,10 +530,10 @@ def get_ads_report():
         total_spend = int(report["total_spend"])
         total_contact = report["total_contact"]
 
-        msg += f"  • Campaign đang hoạt động: {campaigns_active}\n"
-        msg += f"  • Nhóm quảng cáo đang hoạt động: {adsets_active}\n"
-        msg += f"  • Số tiền chi tiêu: {total_spend:,}đ\n"
-        msg += f"  • Liên hệ mới: {total_contact}\n"
+        msg += f"  • Campaign: {campaigns_active}\n"
+        msg += f"  • Nhóm QC: {adsets_active}\n"
+        msg += f"  • Chi tiêu: {total_spend:,}đ\n"
+        msg += f"  • Liên hệ: {total_contact}\n"
 
         # Gợi ý các nhóm nên tắt
         suggestions = []
@@ -337,9 +545,7 @@ def get_ads_report():
             suggestions.append(f">360k ≤3 tin: {len(report['bad_360'])}")
 
         if suggestions:
-            msg += f"  • ⚠️ Gợi ý tắt: {', '.join(suggestions)}\n"
-        else:
-            msg += f"  • ✅ Các nhóm đang chạy ổn định\n"
+            msg += f"  • ⚠️ Cần xem: {', '.join(suggestions)}\n"
 
         msg += "\n"
 
@@ -352,10 +558,10 @@ def get_ads_report():
     total_contact_all = sum(r["total_contact"] for r in product_reports.values())
 
     msg += "**📈 TỔNG KẾT**\n"
-    msg += f"• Tổng campaign đang chạy: {total_campaigns}\n"
-    msg += f"• Tổng nhóm đang chạy: {total_adsets}\n"
-    msg += f"• Tổng chi tiêu: {total_spend_all:,}đ\n"
-    msg += f"• Tổng liên hệ: {total_contact_all}"
+    msg += f"• Tổng campaign: {total_campaigns}\n"
+    msg += f"• Tổng nhóm QC: {total_adsets}\n"
+    msg += f"• Tổng chi: {total_spend_all:,}đ\n"
+    msg += f"• Tổng LH: {total_contact_all}"
 
     # Lưu vào cache
     ads_cache["data"] = msg
@@ -367,21 +573,21 @@ def get_ads_report():
     return msg
 
 
-def stop_my_ads():
-    print(f"🔍 Bắt đầu tắt ads lúc {get_time_vn().strftime('%H:%M:%S')}")
+def stop_product_ads(product_name):
+    """Tắt ads cho một sản phẩm cụ thể"""
+    print(f"🔍 Bắt đầu tắt ads {product_name} lúc {get_time_vn().strftime('%H:%M:%S')}")
 
     # Kiểm tra token trước
     url_check = f"https://graph.facebook.com/v24.0/{AD_ACCOUNT_ID}"
     params_check = {"access_token": META_TOKEN, "fields": "name"}
     check_res = requests.get(url_check, params=params_check)
-    print(f"📊 Kiểm tra token: {check_res.json()}")
 
     if "error" in check_res.json():
         send_telegram(f"❌ Token lỗi: {check_res.json()['error'].get('message')}")
         return
 
+    # Lấy danh sách adset
     url_adsets = f"https://graph.facebook.com/v24.0/{AD_ACCOUNT_ID}/adsets"
-
     params_adsets = {
         "access_token": META_TOKEN,
         "fields": "id,name,campaign_name,status",
@@ -391,71 +597,44 @@ def stop_my_ads():
     res_adsets = requests.get(url_adsets, params=params_adsets)
     data_adsets = res_adsets.json()
 
-    print(f"📊 Response adsets: {json.dumps(data_adsets, indent=2)[:500]}")
-
     if "error" in data_adsets:
-        print(f"❌ Lỗi Facebook: {data_adsets['error']}")
         send_telegram(
             f"❌ Lỗi Facebook: {data_adsets['error'].get('message', 'Unknown')}"
         )
         return
 
     stopped_adsets = []
-    my_name_lower = MY_NAME.lower()
-
-    print(f"🔍 Tìm campaign có tên chứa: '{my_name_lower}'")
+    product_info = PRODUCTS.get(product_name, {})
+    keywords = product_info.get("keywords", [])
 
     if "data" in data_adsets:
-        print(f"📋 Tổng số adset trả về: {len(data_adsets['data'])}")
-
-        for i, adset in enumerate(data_adsets["data"]):
+        for adset in data_adsets["data"]:
             campaign_name = adset.get("campaign_name", "")
             status = adset.get("status", "")
             adset_name = adset.get("name", "")
             adset_id = adset.get("id", "")
 
-            print(f"\n--- Adset {i+1} ---")
-            print(f"  ID: {adset_id}")
-            print(f"  Tên adset: {adset_name}")
-            print(f"  Campaign: {campaign_name}")
-            print(f"  Status: {status}")
+            # Kiểm tra campaign có chứa keyword của sản phẩm không
+            should_stop = False
+            for keyword in keywords:
+                if keyword.lower() in campaign_name.lower():
+                    should_stop = True
+                    break
 
-            # Kiểm tra campaign có chứa tên không
-            if my_name_lower in campaign_name.lower():
-                print(f"  ✅ Campaign có chứa '{MY_NAME}'")
+            if should_stop and status == "ACTIVE":
+                stop_url = f"https://graph.facebook.com/v24.0/{adset_id}"
+                stop_res = requests.post(
+                    stop_url, data={"access_token": META_TOKEN, "status": "PAUSED"}
+                )
 
-                if status == "ACTIVE":
-                    print(f"  🔴 ĐANG ACTIVE - sẽ tắt")
-
-                    stop_url = f"https://graph.facebook.com/v24.0/{adset_id}"
-                    stop_res = requests.post(
-                        stop_url, data={"access_token": META_TOKEN, "status": "PAUSED"}
-                    )
-
-                    result = stop_res.json()
-                    print(f"  Kết quả tắt: {result}")
-
-                    if result.get("success"):
-                        stopped_adsets.append(adset_name)
-                        print(f"  ✅ Đã tắt thành công")
-                    else:
-                        print(f"  ❌ Lỗi khi tắt: {result}")
-                        if "error" in result:
-                            send_telegram(
-                                f"❌ Lỗi tắt adset {adset_name}: {result['error'].get('message')}"
-                            )
-                else:
-                    print(f"  ⏭️ Không active (status: {status})")
-            else:
-                print(f"  ❌ Không chứa '{MY_NAME}'")
-                # In thử campaign name để kiểm tra
-                print(f"     Campaign name thực tế: '{campaign_name}'")
+                result = stop_res.json()
+                if result.get("success"):
+                    stopped_adsets.append(adset_name)
 
     total_stopped = len(stopped_adsets)
-    print(f"\n✅ Đã tắt {total_stopped} nhóm quảng cáo")
 
     msg = f"""
-🛑 ĐÃ TẮT NHÓM QUẢNG CÁO
+🛑 ĐÃ TẮT ADS {product_name.upper()}
 
 Đã tắt: {total_stopped} nhóm quảng cáo
 """
@@ -466,10 +645,8 @@ def stop_my_ads():
 def check_telegram_commands():
     global LAST_UPDATE_ID, last_command_time, last_command_text
 
-    # Luôn lấy offset mới nhất
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getUpdates"
 
-    # Nếu chưa có LAST_UPDATE_ID, lấy tin cuối cùng
     if LAST_UPDATE_ID is None:
         params = {"offset": -1, "limit": 1}
     else:
@@ -488,11 +665,9 @@ def check_telegram_commands():
     if not updates:
         return
 
-    # Xử lý từng update
     for update in updates:
         update_id = update["update_id"]
 
-        # Bỏ qua nếu đã xử lý (dự phòng)
         if LAST_UPDATE_ID and update_id <= LAST_UPDATE_ID:
             continue
 
@@ -500,23 +675,65 @@ def check_telegram_commands():
             current_time = time.time()
             text = update["message"].get("text", "")
 
-            # Kiểm tra trùng lệnh trong 3 giây
             if text == last_command_text and current_time - last_command_time < 3:
                 LAST_UPDATE_ID = update_id
                 continue
 
+            # Xử lý các lệnh
             if text == "/ads":
                 print(f"📨 Xử lý /ads lúc {get_time_vn().strftime('%H:%M:%S')}")
                 send_telegram(get_ads_report())
                 last_command_text = text
                 last_command_time = current_time
+
+            elif text == "/baocao":
+                print(f"📨 Xử lý /baocao lúc {get_time_vn().strftime('%H:%M:%S')}")
+                send_telegram(get_revenue_report())
+                last_command_text = text
+                last_command_time = current_time
+
+            elif text == "/baocaotna":
+                print(f"📨 Xử lý /baocaotna lúc {get_time_vn().strftime('%H:%M:%S')}")
+                send_telegram(get_revenue_report("Tâm Não An"))
+                last_command_text = text
+                last_command_time = current_time
+
+            elif text == "/baocaobkk":
+                print(f"📨 Xử lý /baocaobkk lúc {get_time_vn().strftime('%H:%M:%S')}")
+                send_telegram(get_revenue_report("Bảo Khớp Khang"))
+                last_command_text = text
+                last_command_time = current_time
+
+            elif text == "/baocaohg":
+                print(f"📨 Xử lý /baocaohg lúc {get_time_vn().strftime('%H:%M:%S')}")
+                send_telegram(get_revenue_report("Heart Gold"))
+                last_command_text = text
+                last_command_time = current_time
+
+            elif text == "/stopadstna":
+                print(f"📨 Xử lý /stopadstna lúc {get_time_vn().strftime('%H:%M:%S')}")
+                stop_product_ads("Tâm Não An")
+                last_command_text = text
+                last_command_time = current_time
+
+            elif text == "/stopadsbkk":
+                print(f"📨 Xử lý /stopadsbkk lúc {get_time_vn().strftime('%H:%M:%S')}")
+                stop_product_ads("Bảo Khớp Khang")
+                last_command_text = text
+                last_command_time = current_time
+
+            elif text == "/stopadshg":
+                print(f"📨 Xử lý /stopadshg lúc {get_time_vn().strftime('%H:%M:%S')}")
+                stop_product_ads("Heart Gold")
+                last_command_text = text
+                last_command_time = current_time
+
             elif text == "/stopads":
                 print(f"📨 Xử lý /stopads lúc {get_time_vn().strftime('%H:%M:%S')}")
                 stop_my_ads()
                 last_command_text = text
                 last_command_time = current_time
 
-        # Cập nhật LAST_UPDATE_ID
         LAST_UPDATE_ID = update_id
 
 
@@ -546,31 +763,13 @@ while True:
         leads_today = []
         orders_today = []
         total_money = 0
-        phone_first_owner = {}
 
         if "data" in data:
-            # Xác định marketing đầu tiên của số
-            for lead in data["data"]:
-                phone = lead.get("khachHangSoDienThoai")
-                marketing = lead.get("marketingUserName")
-                if phone not in phone_first_owner:
-                    phone_first_owner[phone] = marketing
+            # Lọc leads hợp lệ
+            valid_leads = filter_leads_data(data["data"])
+            leads_today = valid_leads
 
-            # Lọc lead hợp lệ
-            for lead in data["data"]:
-                phone = lead.get("khachHangSoDienThoai")
-                marketing = lead.get("marketingUserName")
-
-                if marketing != MY_USERNAME:
-                    continue
-                if lead.get("isKhachCu"):
-                    continue
-                if phone_first_owner.get(phone) != MY_USERNAME:
-                    continue
-
-                leads_today.append(lead)
-
-            # Xử lý đơn hàng từ leads_today (ĐÃ SỬA - không lồng nhau)
+            # Xử lý đơn hàng
             for lead in leads_today:
                 if lead.get("lgtDonHangTrangThaiChotDon") == 1:
                     orders_today.append(lead)
@@ -582,22 +781,8 @@ while True:
                         phone = lead.get("khachHangSoDienThoai")
                         sale = lead.get("saleDisplayName")
 
-                        # Lấy thông tin sản phẩm từ sanPhamInfo
-                        products = lead.get("sanPhamInfo") or []
-                        product_name = ""
-
-                        if isinstance(products, list) and products:
-                            first = products[0] or {}
-                            product_name = (
-                                first.get("tenSanPham")
-                                or first.get("sanPhamTen")
-                                or first.get("productName")
-                                or first.get("ten")
-                                or ""
-                            )
-                        # Nếu vẫn không có thì dùng tên landing
-                        if not product_name:
-                            product_name = lead.get("landingTen", "")
+                        # Lấy thông tin sản phẩm
+                        product_name = get_product_from_lead(lead)
 
                         msg = f"""
 💰 {money:,.0f}đ | {product_name}
@@ -613,21 +798,14 @@ while True:
             orders_count = len(orders_today)
             cr = 0 if leads_count == 0 else round((orders_count / leads_count) * 100, 2)
 
-            report = f"""
-📊 BÁO CÁO ADS HÔM NAY
-
-Lead: {leads_count}
-Đơn: {orders_count}
-Doanh thu: {total_money:,}đ
-CR: {cr}%
-"""
+            # Báo cáo tự động theo giờ
             if (
                 now.hour == 11
                 and now.minute == 40
                 and now.second < 30
                 and not report_1140_sent
             ):
-                send_telegram(report)
+                send_telegram(get_revenue_report())
                 report_1140_sent = True
             if (
                 now.hour == 13
@@ -635,7 +813,7 @@ CR: {cr}%
                 and now.second < 30
                 and not report_1330_sent
             ):
-                send_telegram(report)
+                send_telegram(get_revenue_report())
                 report_1330_sent = True
             if (
                 now.hour == 15
@@ -643,7 +821,7 @@ CR: {cr}%
                 and now.second < 30
                 and not report_15_sent
             ):
-                send_telegram(report)
+                send_telegram(get_revenue_report())
                 report_15_sent = True
             if (
                 now.hour == 17
@@ -651,7 +829,7 @@ CR: {cr}%
                 and now.second < 30
                 and not report_17_sent
             ):
-                send_telegram(report)
+                send_telegram(get_revenue_report())
                 report_17_sent = True
 
         print(
