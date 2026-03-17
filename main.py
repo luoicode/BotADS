@@ -214,19 +214,28 @@ def get_product_from_lead(lead):
 def filter_leads_data(leads_data):
     """Lọc leads theo các tiêu chí: không khách cũ, không trùng marketing khác, không trùng số của mình"""
     phone_first_owner = {}
+    phone_first_time = {}  # Lưu thời gian xuất hiện đầu tiên của mỗi số
     valid_leads = []
 
+    # Sắp xếp leads theo thời gian tạo (ngayTao)
+    sorted_leads = sorted(leads_data, key=lambda x: x.get("ngayTao", ""))
+
     # Xác định marketing đầu tiên của mỗi số
-    for lead in leads_data:
+    for lead in sorted_leads:
         phone = lead.get("khachHangSoDienThoai")
         marketing = lead.get("marketingUserName")
-        if phone and marketing and phone not in phone_first_owner:
-            phone_first_owner[phone] = marketing
+        ngay_tao = lead.get("ngayTao", "")
+
+        if phone and marketing:
+            if phone not in phone_first_owner:
+                phone_first_owner[phone] = marketing
+                phone_first_time[phone] = ngay_tao
 
     # Lọc lead hợp lệ
-    for lead in leads_data:
+    for lead in sorted_leads:
         phone = lead.get("khachHangSoDienThoai")
         marketing = lead.get("marketingUserName")
+        ngay_tao = lead.get("ngayTao", "")
 
         # Bỏ qua nếu không phải lead của mình
         if marketing != MY_USERNAME:
@@ -236,15 +245,8 @@ def filter_leads_data(leads_data):
         if lead.get("isKhachCu"):
             continue
 
-        # Bỏ qua nếu số điện thoại đã có marketing khác trước đó
-        if phone_first_owner.get(phone) != MY_USERNAME:
-            continue
-
-        # Xử lý trùng số trong chính mình: chỉ lấy lead đầu tiên của mỗi số
-        existing = next(
-            (l for l in valid_leads if l.get("khachHangSoDienThoai") == phone), None
-        )
-        if not existing:
+        # Chỉ lấy lead đầu tiên của mỗi số
+        if phone_first_time.get(phone) == ngay_tao:
             valid_leads.append(lead)
 
     return valid_leads
