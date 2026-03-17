@@ -158,6 +158,16 @@ def get_ads_report():
 
     print("🔄 Đang lấy dữ liệu mới từ Facebook...")
 
+    # Danh sách sản phẩm cần theo dõi
+    products = [
+        {"name": "Tâm Não An", "keywords": ["Tâm Não An", "Tâm Não", "Tâm Não An -"]},
+        {
+            "name": "Bảo Khớp Khang",
+            "keywords": ["Bảo Khớp Khang", "Bảo Khớp", "Bảo Khớp Khang -"],
+        },
+        {"name": "Heart Gold", "keywords": ["Heart Gold", "Heart Gold -", "Heart"]},
+    ]
+
     # ===== LẤY DANH SÁCH CAMPAIGN =====
     url_campaigns = f"https://graph.facebook.com/v24.0/{AD_ACCOUNT_ID}/campaigns"
 
@@ -170,12 +180,15 @@ def get_ads_report():
     res_camp = requests.get(url_campaigns, params=params_camp)
     data_camp = res_camp.json()
 
-    campaign_names = {}
+    all_campaigns = {}  # Lưu tất cả campaign của bạn
 
     if "data" in data_camp:
         for camp in data_camp["data"]:
             if MY_NAME in camp.get("name", ""):
-                campaign_names[camp["id"]] = camp.get("name")
+                all_campaigns[camp["id"]] = {
+                    "name": camp.get("name"),
+                    "status": camp.get("status"),
+                }
 
     # ===== LẤY DANH SÁCH ADSET =====
     url_adsets = f"https://graph.facebook.com/v24.0/{AD_ACCOUNT_ID}/adsets"
@@ -188,16 +201,6 @@ def get_ads_report():
 
     res_adsets = requests.get(url_adsets, params=params_adsets)
     data_adsets = res_adsets.json()
-
-    campaigns_with_active_adsets = set()
-    my_active_adsets = set()
-
-    if "data" in data_adsets:
-        for adset in data_adsets["data"]:
-            if adset["campaign_id"] in campaign_names:
-                if adset.get("status") == "ACTIVE":
-                    my_active_adsets.add(adset["id"])
-                    campaigns_with_active_adsets.add(adset["campaign_id"])
 
     # ===== LẤY DỮ LIỆU CHI TIÊU =====
     url_insights = f"https://graph.facebook.com/v24.0/{AD_ACCOUNT_ID}/insights"
@@ -213,57 +216,146 @@ def get_ads_report():
     res_insights = requests.get(url_insights, params=params_insights)
     data_insights = res_insights.json()
 
-    total_spend = 0
-    total_contact = 0
-    bad_120 = []
-    bad_240 = []
-    bad_360 = []
+    # Xử lý dữ liệu theo từng sản phẩm
+    product_reports = {}
 
+    # Khởi tạo báo cáo cho từng sản phẩm
+    for product in products:
+        product_reports[product["name"]] = {
+            "has_data": False,
+            "campaigns_active": set(),
+            "adsets_active": set(),
+            "total_spend": 0,
+            "total_contact": 0,
+            "bad_120": set(),
+            "bad_240": set(),
+            "bad_360": set(),
+            "adsets_list": [],  # Lưu danh sách adset để kiểm tra
+        }
+
+    # Phân loại campaign theo sản phẩm
+    campaign_to_product = {}
+    for camp_id, camp_info in all_campaigns.items():
+        camp_name = camp_info["name"]
+        assigned = False
+        for product in products:
+            for keyword in product["keywords"]:
+                if keyword in camp_name:
+                    campaign_to_product[camp_id] = product["name"]
+                    assigned = True
+                    break
+            if assigned:
+                break
+
+    # Lấy thông tin adset
+    adset_to_campaign = {}
+    if "data" in data_adsets:
+        for adset in data_adsets["data"]:
+            campaign_id = adset["campaign_id"]
+            if campaign_id in campaign_to_product:
+                product_name = campaign_to_product[campaign_id]
+                product_reports[product_name]["has_data"] = True
+                adset_to_campaign[adset["id"]] = campaign_id
+
+                if adset.get("status") == "ACTIVE":
+                    product_reports[product_name]["adsets_active"].add(adset["id"])
+                    product_reports[product_name]["campaigns_active"].add(campaign_id)
+
+                # Lưu thông tin adset để kiểm tra sau
+                product_reports[product_name]["adsets_list"].append(
+                    {
+                        "id": adset["id"],
+                        "name": adset.get("name"),
+                        "campaign_id": campaign_id,
+                        "status": adset.get("status"),
+                    }
+                )
+
+    # Xử lý dữ liệu chi tiêu
     if "data" in data_insights:
         for ad in data_insights["data"]:
             campaign_id = ad.get("campaign_id")
+            adset_id = ad.get("adset_id")
 
-            if campaign_id in campaign_names:
+            if campaign_id in campaign_to_product:
+                product_name = campaign_to_product[campaign_id]
                 spend = float(ad.get("spend", 0))
-                total_spend += spend
-
                 contact = 0
+
                 for act in ad.get("actions", []):
                     if (
                         act["action_type"]
                         == "onsite_conversion.messaging_conversation_started_7d"
                     ):
                         contact = int(act["value"])
-                total_contact += contact
 
-                adset_id = ad.get("adset_id")
-                if adset_id in my_active_adsets:
+                product_reports[product_name]["total_spend"] += spend
+                product_reports[product_name]["total_contact"] += contact
+
+                # Kiểm tra các adset đang active
+                if adset_id in product_reports[product_name]["adsets_active"]:
                     adset_name = ad.get("adset_name", "")
+                    cost_per_message = spend / contact if contact > 0 else spend
 
                     if spend > 120000 and contact == 0:
-                        bad_120.append(adset_name)
+                        product_reports[product_name]["bad_120"].add(adset_name)
                     if spend > 240000 and contact <= 1:
-                        bad_240.append(adset_name)
+                        product_reports[product_name]["bad_240"].add(adset_name)
                     if spend > 360000 and contact <= 3:
-                        bad_360.append(adset_name)
+                        product_reports[product_name]["bad_360"].add(adset_name)
 
-    bad_120 = list(set(bad_120))
-    bad_240 = list(set(bad_240))
-    bad_360 = list(set(bad_360))
+    # Tạo báo cáo
+    msg = "📊 **BÁO CÁO ADS THEO SẢN PHẨM**\n\n"
 
-    msg = f"""
-📊 ADS MANAGER
+    for product in products:
+        product_name = product["name"]
+        report = product_reports[product_name]
 
-Campaign đang hoạt động: {len(campaigns_with_active_adsets)}
-Nhóm quảng cáo đang hoạt động: {len(my_active_adsets)}
+        msg += f"**{product_name}**\n"
 
-💰 Chi tiêu trong ngày: {int(total_spend):,}đ
-💬 Liên hệ mới trong ngày: {total_contact}
+        if not report["has_data"]:
+            msg += "➡️ Đang không chạy\n\n"
+            continue
 
-⚠️ >120k chưa có tin: {len(bad_120)}
-⚠️ >240k ≤1 tin: {len(bad_240)}
-⚠️ >360k ≤3 tin: {len(bad_360)}
-"""
+        campaigns_active = len(report["campaigns_active"])
+        adsets_active = len(report["adsets_active"])
+        total_spend = int(report["total_spend"])
+        total_contact = report["total_contact"]
+
+        msg += f"  • Campaign đang hoạt động: {campaigns_active}\n"
+        msg += f"  • Nhóm quảng cáo đang hoạt động: {adsets_active}\n"
+        msg += f"  • Số tiền chi tiêu: {total_spend:,}đ\n"
+        msg += f"  • Liên hệ mới: {total_contact}\n"
+
+        # Gợi ý các nhóm nên tắt
+        suggestions = []
+        if report["bad_120"]:
+            suggestions.append(f">120k chưa tin: {len(report['bad_120'])}")
+        if report["bad_240"]:
+            suggestions.append(f">240k ≤1 tin: {len(report['bad_240'])}")
+        if report["bad_360"]:
+            suggestions.append(f">360k ≤3 tin: {len(report['bad_360'])}")
+
+        if suggestions:
+            msg += f"  • ⚠️ Gợi ý tắt: {', '.join(suggestions)}\n"
+        else:
+            msg += f"  • ✅ Các nhóm đang chạy ổn định\n"
+
+        msg += "\n"
+
+    # Thêm tổng kết
+    total_campaigns = len(
+        [c for c in all_campaigns.values() if c.get("status") == "ACTIVE"]
+    )
+    total_adsets = sum(len(r["adsets_active"]) for r in product_reports.values())
+    total_spend_all = sum(int(r["total_spend"]) for r in product_reports.values())
+    total_contact_all = sum(r["total_contact"] for r in product_reports.values())
+
+    msg += "**📈 TỔNG KẾT**\n"
+    msg += f"• Tổng campaign đang chạy: {total_campaigns}\n"
+    msg += f"• Tổng nhóm đang chạy: {total_adsets}\n"
+    msg += f"• Tổng chi tiêu: {total_spend_all:,}đ\n"
+    msg += f"• Tổng liên hệ: {total_contact_all}"
 
     # Lưu vào cache
     ads_cache["data"] = msg
