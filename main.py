@@ -481,6 +481,13 @@ while True:
                     total_money += money
 
                     if lead["id"] not in sent_orders:
+                        if lead["id"] not in sent_orders:
+                            # Debug: in ra cấu trúc lead để xem field nào chứa sản phẩm
+                            print(
+                                f"🔍 Lead ID {lead['id']}: {json.dumps(lead, indent=2, ensure_ascii=False)[:1000]}"
+                            )
+
+                        # ... phần còn lại
                         name = lead.get("khachHangTen")
                         phone = lead.get("khachHangSoDienThoai")
                         sale = lead.get("saleDisplayName")
@@ -517,10 +524,9 @@ while True:
                                 product_text = "\n  (Không có thông tin sản phẩm)"
 
                         msg = f"""
-            💰 {money:,.0f}đ
+            💰 {money:,.0f}đ | 📦 Sản phẩm:{product_text}
             👤 {name} | 📞 {phone}
             👩 Sale: {sale}
-            📦 Sản phẩm:{product_text}
             """
                         send_telegram(msg)
                         sent_orders.add(lead["id"])
