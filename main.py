@@ -212,30 +212,36 @@ def get_product_from_lead(lead):
 
 
 def filter_leads_data(leads_data):
-    """Lọc leads theo các tiêu chí: không khách cũ, không trùng marketing khác, không trùng số của mình"""
-    phone_first_owner = {}
-    phone_first_time = {}  # Lưu thời gian xuất hiện đầu tiên của mỗi số
+    """Lọc leads theo các tiêu chí: không khách cũ, không trùng marketing khác,
+    nhưng vẫn giữ lead chốt đơn dù trùng số với chính mình"""
+
+    phone_first_owner = {}  # Lưu marketing đầu tiên của mỗi số
+    leads_with_orders = set()  # Lưu các số đã có đơn chốt
     valid_leads = []
 
-    # Sắp xếp leads theo thời gian tạo (ngayTao)
+    # Sắp xếp leads theo thời gian tạo (ngayTao) - cũ nhất lên trước
     sorted_leads = sorted(leads_data, key=lambda x: x.get("ngayTao", ""))
 
-    # Xác định marketing đầu tiên của mỗi số
+    # Bước 1: Xác định marketing đầu tiên của mỗi số
     for lead in sorted_leads:
         phone = lead.get("khachHangSoDienThoai")
         marketing = lead.get("marketingUserName")
-        ngay_tao = lead.get("ngayTao", "")
 
         if phone and marketing:
             if phone not in phone_first_owner:
                 phone_first_owner[phone] = marketing
-                phone_first_time[phone] = ngay_tao
 
-    # Lọc lead hợp lệ
+    # Bước 2: Xác định số nào có đơn chốt
+    for lead in sorted_leads:
+        if lead.get("lgtDonHangTrangThaiChotDon") == 1:
+            phone = lead.get("khachHangSoDienThoai")
+            leads_with_orders.add(phone)
+
+    # Bước 3: Lọc lead hợp lệ
     for lead in sorted_leads:
         phone = lead.get("khachHangSoDienThoai")
         marketing = lead.get("marketingUserName")
-        ngay_tao = lead.get("ngayTao", "")
+        is_order = lead.get("lgtDonHangTrangThaiChotDon") == 1
 
         # Bỏ qua nếu không phải lead của mình
         if marketing != MY_USERNAME:
@@ -245,9 +251,21 @@ def filter_leads_data(leads_data):
         if lead.get("isKhachCu"):
             continue
 
-        # Chỉ lấy lead đầu tiên của mỗi số
-        if phone_first_time.get(phone) == ngay_tao:
+        # Nếu số này có đơn chốt ở bất kỳ lead nào, GIỮ LẠI TẤT CẢ leads của số đó
+        if phone in leads_with_orders:
             valid_leads.append(lead)
+            continue
+
+        # Nếu không có đơn chốt, kiểm tra marketing đầu tiên
+        # Chỉ lấy lead đầu tiên của mỗi số (nếu không có đơn)
+        first_owner = phone_first_owner.get(phone)
+        if first_owner == MY_USERNAME:
+            # Kiểm tra xem đã có lead nào của số này chưa
+            existing = next(
+                (l for l in valid_leads if l.get("khachHangSoDienThoai") == phone), None
+            )
+            if not existing:
+                valid_leads.append(lead)
 
     return valid_leads
 
