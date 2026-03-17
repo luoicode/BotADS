@@ -743,7 +743,7 @@ def get_payload():
         "date": [f"{today}T00:00:00+07:00", f"{today}T23:59:59+07:00"],
         "tuNgay": f"{today}T00:00:00+07:00",
         "denNgay": f"{today}T23:59:59+07:00",
-        "pageInfo": {"page": 1, "pageSize": 50},
+        "pageInfo": {"page": 1, "pageSize": 100},  # Tăng từ 50 lên 100
         "sorts": [],
     }
 
