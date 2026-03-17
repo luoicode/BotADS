@@ -457,59 +457,64 @@ while True:
         phone_first_owner = {}
 
         if "data" in data:
+            # Xác định marketing đầu tiên của số
             for lead in data["data"]:
                 phone = lead.get("khachHangSoDienThoai")
                 marketing = lead.get("marketingUserName")
                 if phone not in phone_first_owner:
                     phone_first_owner[phone] = marketing
 
+            # Lọc lead hợp lệ
             for lead in data["data"]:
                 phone = lead.get("khachHangSoDienThoai")
                 marketing = lead.get("marketingUserName")
+
                 if marketing != MY_USERNAME:
                     continue
                 if lead.get("isKhachCu"):
                     continue
                 if phone_first_owner.get(phone) != MY_USERNAME:
                     continue
+
                 leads_today.append(lead)
 
-                for lead in leads_today:
-                    if lead.get("lgtDonHangTrangThaiChotDon") == 1:
-                        orders_today.append(lead)
-                        money = round(lead.get("lgtDonHangTienThuKhach") or 0)
-                        total_money += money
+            # Xử lý đơn hàng từ leads_today (ĐÃ SỬA - không lồng nhau)
+            for lead in leads_today:
+                if lead.get("lgtDonHangTrangThaiChotDon") == 1:
+                    orders_today.append(lead)
+                    money = round(lead.get("lgtDonHangTienThuKhach") or 0)
+                    total_money += money
 
-                        if lead["id"] not in sent_orders:
-                            name = lead.get("khachHangTen")
-                            phone = lead.get("khachHangSoDienThoai")
-                            sale = lead.get("saleDisplayName")
+                    if lead["id"] not in sent_orders:
+                        name = lead.get("khachHangTen")
+                        phone = lead.get("khachHangSoDienThoai")
+                        sale = lead.get("saleDisplayName")
 
-                            # Lấy thông tin sản phẩm từ sanPhamInfo
-                            products = lead.get("sanPhamInfo") or []
-                            product_name = ""
+                        # Lấy thông tin sản phẩm từ sanPhamInfo
+                        products = lead.get("sanPhamInfo") or []
+                        product_name = ""
 
-                            if isinstance(products, list) and products:
-                                first = products[0] or {}
-                                product_name = (
-                                    first.get("tenSanPham")
-                                    or first.get("sanPhamTen")
-                                    or first.get("productName")
-                                    or first.get("ten")
-                                    or ""
-                                )
-                            # Nếu vẫn không có thì dùng tên landing
-                            if not product_name:
-                                product_name = lead.get("landingTen", "")
+                        if isinstance(products, list) and products:
+                            first = products[0] or {}
+                            product_name = (
+                                first.get("tenSanPham")
+                                or first.get("sanPhamTen")
+                                or first.get("productName")
+                                or first.get("ten")
+                                or ""
+                            )
+                        # Nếu vẫn không có thì dùng tên landing
+                        if not product_name:
+                            product_name = lead.get("landingTen", "")
 
-                            msg = f"""
-                💰 {money:,.0f}đ | {product_name}
-                👤 {name} | 📞 {phone}
-                👩 Sale: {sale}
-                """
+                        msg = f"""
+💰 {money:,.0f}đ | {product_name}
+👤 {name} | 📞 {phone}
+👩 Sale: {sale}
+"""
 
-                            send_telegram(msg)
-                            sent_orders.add(lead["id"])
+                        send_telegram(msg)
+                        sent_orders.add(lead["id"])
 
             now = get_time_vn()
             leads_count = len(leads_today)
