@@ -333,7 +333,7 @@ def get_revenue_report(product_filter=None):
 
     # Tâm Não An + Bảo Thần Khang
     tna_stats = product_stats["Tâm Não An"]
-    msg += "- 🧠 Tâm Não An + Bảo Thần Khang\n"
+    msg += "🧠 Tâm Não An + Bảo Thần Khang\n"
     msg += f"  • Lead: {tna_stats['leads']}\n"
     msg += f"  • Đơn: {tna_stats['orders']}\n"
     msg += f"  • Doanh thu: {tna_stats['revenue']:,}đ\n\n"
@@ -535,13 +535,13 @@ def get_ads_report():
                         product_reports[product_name]["bad_360"].add(adset_name)
 
     # Tạo báo cáo
-    msg = "📊 **BÁO CÁO ADS THEO SẢN PHẨM**\n\n"
+    msg = "📊 BÁO CÁO ADS THEO SẢN PHẨM\n\n"
 
     for product in products:
         product_name = product["name"]
         report = product_reports[product_name]
 
-        msg += f"**{product_name}**\n"
+        msg += f"⭐️ {product_name}\n"
 
         if not report["has_data"]:
             msg += "➡️ Đang không chạy\n\n"
@@ -579,7 +579,7 @@ def get_ads_report():
     total_spend_all = sum(int(r["total_spend"]) for r in product_reports.values())
     total_contact_all = sum(r["total_contact"] for r in product_reports.values())
 
-    msg += "**📈 TỔNG KẾT**\n"
+    msg += "📈 TỔNG KẾT\n"
     msg += f"• Tổng campaign: {total_campaigns}\n"
     msg += f"• Tổng nhóm QC: {total_adsets}\n"
     msg += f"• Tổng chi: {total_spend_all:,}đ\n"
