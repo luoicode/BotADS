@@ -325,14 +325,13 @@ def get_revenue_report(product_filter=None):
     if product_filter:
         return get_product_detail_report(product_filter, product_stats[product_filter])
 
-    # ===== LẤY CHI PHÍ ADS CHỈ TỪ CAMPAIGN CỦA BẠN =====
+    # ===== LẤY CHI PHÍ ADS TỪ INSIGHTS (CHỈ CAMPAIGN CÓ DỮ LIỆU) =====
     total_ads_spend = 0
     try:
-        # Lấy tổng chi phí từ báo cáo ads (đã lọc campaign của bạn)
         url_insights = f"https://graph.facebook.com/v24.0/{AD_ACCOUNT_ID}/insights"
         params_insights = {
             "access_token": META_TOKEN,
-            "fields": "spend",
+            "fields": "campaign_name,spend",
             "date_preset": "today",
             "level": "campaign",
             "limit": 500,
@@ -342,14 +341,17 @@ def get_revenue_report(product_filter=None):
 
         if "data" in data_insights:
             for item in data_insights["data"]:
-                # Lọc campaign có tên chứa MY_NAME
                 campaign_name = item.get("campaign_name", "")
-                if MY_NAME.lower() in campaign_name.lower():
-                    total_ads_spend += float(item.get("spend", 0))
-    except:
-        pass
+                spend = float(item.get("spend", 0))
 
-    # Tạo báo cáo tổng hợp dạng 1 dòng
+                # Chỉ tính campaign có tên chứa MY_NAME
+                if MY_NAME.lower() in campaign_name.lower():
+                    total_ads_spend += spend
+                    print(f"📊 Campaign có chi tiêu: {campaign_name} - {spend:,.0f}đ")
+    except Exception as e:
+        print(f"❌ Lỗi lấy chi phí ads: {e}")
+
+    # Tạo báo cáo tổng hợp
     tna_revenue = product_stats["Tâm Não An"]["revenue"]
     bkk_revenue = product_stats["Bảo Khớp Khang"]["revenue"]
     hg_revenue = product_stats["Heart Gold"]["revenue"]
