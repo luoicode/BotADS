@@ -320,40 +320,43 @@ def get_revenue_report(product_filter=None):
     if product_filter:
         return get_product_detail_report(product_filter, product_stats[product_filter])
 
-    # Tạo báo cáo tổng hợp (giữ nguyên như cũ)
-    msg = "📊 BÁO CÁO DOANH THU HÔM NAY\n\n"
+    # Lấy tổng chi phí ads
+    total_ads_spend = 0
+    try:
+        url_insights = f"https://graph.facebook.com/v24.0/{AD_ACCOUNT_ID}/insights"
+        params_insights = {
+            "access_token": META_TOKEN,
+            "fields": "spend",
+            "date_preset": "today",
+            "limit": 1,
+        }
+        res_insights = requests.get(url_insights, params=params_insights)
+        data_insights = res_insights.json()
 
-    # Tâm Não An + Bảo Thần Khang
-    tna_stats = product_stats["Tâm Não An"]
-    msg += "🧠 Tâm Não An + Bảo Thần Khang\n"
-    msg += f"  • Lead: {tna_stats['leads']}\n"
-    msg += f"  • Đơn: {tna_stats['orders']}\n"
-    msg += f"  • Doanh thu: {tna_stats['revenue']:,}đ\n\n"
+        if "data" in data_insights and len(data_insights["data"]) > 0:
+            total_ads_spend = float(data_insights["data"][0].get("spend", 0))
+    except:
+        pass
 
-    # Bảo Khớp Khang
-    bkk_stats = product_stats["Bảo Khớp Khang"]
-    msg += "🦴 Bảo Khớp Khang\n"
-    msg += f"  • Lead: {bkk_stats['leads']}\n"
-    msg += f"  • Đơn: {bkk_stats['orders']}\n"
-    msg += f"  • Doanh thu: {bkk_stats['revenue']:,}đ\n\n"
+    # Tạo báo cáo tổng hợp dạng 1 dòng
+    tna_revenue = product_stats["Tâm Não An"]["revenue"]
+    bkk_revenue = product_stats["Bảo Khớp Khang"]["revenue"]
+    hg_revenue = product_stats["Heart Gold"]["revenue"]
 
-    # Heart Gold
-    hg_stats = product_stats["Heart Gold"]
-    msg += "💛 Heart Gold\n"
-    msg += f"  • Lead: {hg_stats['leads']}\n"
-    msg += f"  • Đơn: {hg_stats['orders']}\n"
-    msg += f"  • Doanh thu: {hg_stats['revenue']:,}đ\n\n"
-
-    # Tổng kết
     total_leads = sum(s["leads"] for s in product_stats.values())
     total_orders = sum(s["orders"] for s in product_stats.values())
     total_revenue = sum(s["revenue"] for s in product_stats.values())
     cr = (total_orders / total_leads * 100) if total_leads > 0 else 0
 
+    msg = "📊 BÁO CÁO DOANH THU HÔM NAY\n\n"
+    msg += f"🧠 Tâm Não An: {tna_revenue:,}đ\n"
+    msg += f"🦴 Bảo Khớp Khang: {bkk_revenue:,}đ\n"
+    msg += f"💛 Heart Gold: {hg_revenue:,}đ\n\n"
     msg += "📈 TỔNG KẾT\n"
     msg += f"  • Tổng Lead: {total_leads}\n"
     msg += f"  • Tổng Đơn: {total_orders}\n"
     msg += f"  • Tổng Doanh thu: {total_revenue:,}đ\n"
+    msg += f"  • Chi phí ads tổng: {int(total_ads_spend):,}đ\n"
     msg += f"  • CR: {cr:.2f}%"
 
     # Lưu cache
