@@ -696,7 +696,7 @@ def stop_product_ads(product_name):
         send_telegram(f"❌ Token lỗi: {error_msg}")
         return
 
-    # Lấy danh sách campaign trước
+    # BƯỚC 1: Lấy danh sách campaign của Nguyễn Hữu Huy
     url_campaigns = f"https://graph.facebook.com/v24.0/{AD_ACCOUNT_ID}/campaigns"
     params_campaigns = {
         "access_token": META_TOKEN,
@@ -706,25 +706,39 @@ def stop_product_ads(product_name):
     res_campaigns = requests.get(url_campaigns, params=params_campaigns)
     data_campaigns = res_campaigns.json()
 
-    # Lọc campaign theo sản phẩm
-    product_campaigns = set()
-    product_info = PRODUCTS.get(product_name, {})
-    keywords = product_info.get("keywords", [])
+    # Lọc campaign của Nguyễn Hữu Huy
+    my_campaigns = {}
+    my_name_lower = MY_NAME.lower()
 
     if "data" in data_campaigns:
         for camp in data_campaigns["data"]:
             camp_name = camp.get("name", "")
-            for keyword in keywords:
-                if keyword.lower() in camp_name.lower():
-                    product_campaigns.add(camp["id"])
-                    print(f"✅ Tìm thấy campaign {camp_name} cho {product_name}")
-                    break
+            camp_id = camp["id"]
+            if my_name_lower in camp_name.lower():
+                my_campaigns[camp_id] = camp_name
+                print(f"✅ Campaign của bạn: {camp_name}")
 
-    if not product_campaigns:
-        send_telegram(f"❌ Không tìm thấy campaign nào cho {product_name}")
+    if not my_campaigns:
+        send_telegram("❌ Không tìm thấy campaign nào của bạn")
         return
 
-    # Lấy danh sách adset
+    # BƯỚC 2: Trong các campaign của bạn, lọc theo sản phẩm
+    product_campaigns = set()
+    product_info = PRODUCTS.get(product_name, {})
+    keywords = product_info.get("keywords", [])
+
+    for camp_id, camp_name in my_campaigns.items():
+        for keyword in keywords:
+            if keyword.lower() in camp_name.lower():
+                product_campaigns.add(camp_id)
+                print(f"  🎯 Campaign {product_name}: {camp_name}")
+                break
+
+    if not product_campaigns:
+        send_telegram(f"❌ Không tìm thấy campaign {product_name} của bạn")
+        return
+
+    # BƯỚC 3: Lấy danh sách adset
     url_adsets = f"https://graph.facebook.com/v24.0/{AD_ACCOUNT_ID}/adsets"
     params_adsets = {
         "access_token": META_TOKEN,
@@ -741,7 +755,7 @@ def stop_product_ads(product_name):
         )
         return
 
-    # Tắt các adset thuộc campaign của sản phẩm
+    # BƯỚC 4: Tắt các adset thuộc campaign sản phẩm
     stopped_adsets = []
 
     if "data" in data_adsets:
@@ -752,7 +766,7 @@ def stop_product_ads(product_name):
             adset_id = adset.get("id", "")
 
             if campaign_id in product_campaigns and status == "ACTIVE":
-                print(f"🔴 Tắt adset: {adset_name} (campaign: {campaign_id})")
+                print(f"🔴 Tắt adset: {adset_name}")
 
                 stop_url = f"https://graph.facebook.com/v24.0/{adset_id}"
                 stop_res = requests.post(
@@ -776,7 +790,7 @@ def stop_product_ads(product_name):
 
 
 def stop_my_ads():
-    """Tắt TẤT CẢ nhóm quảng cáo có tên campaign chứa 'Nguyễn Hữu Huy'"""
+    """Tắt TẤT CẢ nhóm quảng cáo của Nguyễn Hữu Huy"""
     print(f"🔍 Bắt đầu tắt tất cả ads lúc {get_time_vn().strftime('%H:%M:%S')}")
 
     # Kiểm tra token trước
@@ -789,7 +803,7 @@ def stop_my_ads():
         send_telegram(f"❌ Token lỗi: {check_data['error'].get('message')}")
         return
 
-    # Lấy danh sách campaign của tôi
+    # Lấy danh sách campaign của Nguyễn Hữu Huy
     url_campaigns = f"https://graph.facebook.com/v24.0/{AD_ACCOUNT_ID}/campaigns"
     params_campaigns = {
         "access_token": META_TOKEN,
@@ -807,7 +821,7 @@ def stop_my_ads():
             camp_name = camp.get("name", "").lower()
             if my_name_lower in camp_name:
                 my_campaigns.add(camp["id"])
-                print(f"✅ Tìm thấy campaign của bạn: {camp.get('name')}")
+                print(f"✅ Campaign của bạn: {camp.get('name')}")
 
     if not my_campaigns:
         send_telegram("❌ Không tìm thấy campaign nào của bạn")
@@ -830,7 +844,7 @@ def stop_my_ads():
         )
         return
 
-    # Tắt các adset thuộc campaign của tôi
+    # Tắt các adset thuộc campaign của bạn
     stopped_adsets = []
 
     if "data" in data_adsets:
