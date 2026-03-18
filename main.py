@@ -325,21 +325,27 @@ def get_revenue_report(product_filter=None):
     if product_filter:
         return get_product_detail_report(product_filter, product_stats[product_filter])
 
-    # Lấy tổng chi phí ads
+    # ===== LẤY CHI PHÍ ADS CHỈ TỪ CAMPAIGN CỦA BẠN =====
     total_ads_spend = 0
     try:
+        # Lấy tổng chi phí từ báo cáo ads (đã lọc campaign của bạn)
         url_insights = f"https://graph.facebook.com/v24.0/{AD_ACCOUNT_ID}/insights"
         params_insights = {
             "access_token": META_TOKEN,
             "fields": "spend",
             "date_preset": "today",
-            "limit": 1,
+            "level": "campaign",
+            "limit": 500,
         }
         res_insights = requests.get(url_insights, params=params_insights)
         data_insights = res_insights.json()
 
-        if "data" in data_insights and len(data_insights["data"]) > 0:
-            total_ads_spend = float(data_insights["data"][0].get("spend", 0))
+        if "data" in data_insights:
+            for item in data_insights["data"]:
+                # Lọc campaign có tên chứa MY_NAME
+                campaign_name = item.get("campaign_name", "")
+                if MY_NAME.lower() in campaign_name.lower():
+                    total_ads_spend += float(item.get("spend", 0))
     except:
         pass
 
