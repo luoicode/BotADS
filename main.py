@@ -6,7 +6,9 @@ from datetime import datetime
 from flask import Flask
 from threading import Thread
 import pytz
+import logging
 
+logging.basicConfig(level=logging.DEBUG)
 # Set múi giờ Việt Nam
 vn_tz = pytz.timezone("Asia/Ho_Chi_Minh")
 
@@ -25,13 +27,16 @@ def home():
 
 
 def run():
-    app.run(host="0.0.0.0", port=8080)
+    print("🔥 Flask server đang khởi động...")
+    app.run(host="0.0.0.0", port=8080, debug=False, use_reloader=False)
 
 
 def keep_alive():
+    print("🚀 Bắt đầu thread giữ bot sống...")
     t = Thread(target=run)
     t.daemon = True
     t.start()
+    print("✅ Thread đã chạy")
 
 
 # ===== META ADS =====
@@ -703,8 +708,6 @@ def stop_product_ads(product_name):
     res_adsets = requests.get(url_adsets, params=params_adsets)
     data_adsets = res_adsets.json()
 
-    print(f"📊 Response adsets: {json.dumps(data_adsets, indent=2)[:500]}")
-
     if "error" in data_adsets:
         error_msg = data_adsets["error"].get("message", "Unknown")
         send_telegram(f"❌ Lỗi Facebook: {error_msg}")
@@ -714,47 +717,66 @@ def stop_product_ads(product_name):
     product_info = PRODUCTS.get(product_name, {})
     keywords = product_info.get("keywords", [])
 
-    print(f"🔑 Keywords cho {product_name}: {keywords}")
+    print(f"\n🔑 Keywords cho {product_name}: {keywords}")
+    print(f"📋 Tổng số adset: {len(data_adsets.get('data', []))}")
 
     if "data" in data_adsets:
-        print(f"📋 Tổng số adset: {len(data_adsets['data'])}")
-
         for adset in data_adsets["data"]:
             campaign_name = adset.get("campaign_name", "")
             status = adset.get("status", "")
             adset_name = adset.get("name", "")
             adset_id = adset.get("id", "")
 
+            print(f"\n--- Adset: {adset_name} ---")
+            print(f"  Campaign: {campaign_name}")
+            print(f"  Status: {status}")
+            print(f"  ID: {adset_id}")
+
             # Kiểm tra campaign có chứa keyword của sản phẩm không
             should_stop = False
+            matched_keyword = ""
             for keyword in keywords:
                 if keyword.lower() in campaign_name.lower():
                     should_stop = True
-                    print(
-                        f"  ✅ Tìm thấy keyword '{keyword}' trong campaign: {campaign_name}"
-                    )
+                    matched_keyword = keyword
+                    print(f"  ✅ Tìm thấy keyword '{keyword}' trong campaign")
                     break
 
-            if should_stop and status == "ACTIVE":
-                print(f"  🔴 Đang tắt adset: {adset_name}")
-                stop_url = f"https://graph.facebook.com/v24.0/{adset_id}"
-                stop_res = requests.post(
-                    stop_url, data={"access_token": META_TOKEN, "status": "PAUSED"}
-                )
+            if should_stop:
+                print(f"  🎯 Sẽ xử lý adset này")
 
-                result = stop_res.json()
-                print(f"  Kết quả: {result}")
+                if status == "ACTIVE":
+                    print(f"  🔴 ĐANG ACTIVE - tiến hành tắt...")
 
-                if result.get("success"):
-                    stopped_adsets.append(adset_name)
+                    # Thử gọi API tắt
+                    stop_url = f"https://graph.facebook.com/v24.0/{adset_id}"
+                    stop_data = {"access_token": META_TOKEN, "status": "PAUSED"}
+                    print(f"  Gửi request: POST {stop_url}")
+                    print(f"  Data: {stop_data}")
+
+                    stop_res = requests.post(stop_url, data=stop_data)
+                    result = stop_res.json()
+                    print(f"  Kết quả: {json.dumps(result, indent=2)}")
+
+                    if result.get("success"):
+                        stopped_adsets.append(adset_name)
+                        print(f"  ✅ Đã tắt thành công")
+                    else:
+                        print(f"  ❌ Lỗi khi tắt")
+                        if "error" in result:
+                            error_detail = result["error"]
+                            print(f"  Mã lỗi: {error_detail.get('code')}")
+                            print(f"  Message: {error_detail.get('message')}")
+                            send_telegram(
+                                f"❌ Lỗi tắt {adset_name}: {error_detail.get('message')}"
+                            )
                 else:
-                    if "error" in result:
-                        send_telegram(
-                            f"❌ Lỗi tắt {adset_name}: {result['error'].get('message')}"
-                        )
+                    print(f"  ⏸️ Không active (status: {status})")
+            else:
+                print(f"  ❌ Không chứa keyword nào")
 
     total_stopped = len(stopped_adsets)
-    print(f"✅ Đã tắt {total_stopped} nhóm quảng cáo cho {product_name}")
+    print(f"\n✅ Tổng kết: Đã tắt {total_stopped} nhóm quảng cáo cho {product_name}")
 
     msg = f"""
 🛑 ĐÃ TẮT ADS {product_name.upper()}
@@ -947,6 +969,7 @@ keep_alive()
 
 while True:
     try:
+        print(f"🔄 [{get_time_vn().strftime('%H:%M:%S')}] Bắt đầu vòng lặp...")
         check_expiry_dates()
         check_telegram_commands()
 
@@ -1050,6 +1073,10 @@ while True:
         )
 
     except Exception as e:
-        print(f"\n❌ Lỗi lúc {get_time_vn().strftime('%H:%M:%S')}: {e}")
+        print(f"\n❌ LỖI NGHIÊM TRỌNG: {e}")
+        import traceback
+
+        traceback.print_exc()
+        time.sleep(5)  # Đợi 5s rồi thử lại
 
     time.sleep(30)
