@@ -304,8 +304,8 @@ def get_revenue_report(product_filter=None):
     for lead in valid_leads:
         product = get_product_from_lead(lead)
 
-        # Gộp Bảo Thần Khang vào Tâm Não An nếu có include_gift
-        if product == "Bảo Thần Khang" and PRODUCTS["Tâm Não An"]["include_gift"]:
+        # Gộp Bảo Thần Khang vào Tâm Não An
+        if product == "Bảo Thần Khang":
             product = "Tâm Não An"
 
         product_stats[product]["leads"] += 1
@@ -316,19 +316,11 @@ def get_revenue_report(product_filter=None):
             money = round(lead.get("lgtDonHangTienThuKhach") or 0)
             product_stats[product]["revenue"] += money
 
-    # Nếu có filter, chỉ trả về sản phẩm đó
+    # Nếu có filter, gọi hàm báo cáo chi tiết theo sản phẩm
     if product_filter:
-        if product_filter in product_stats:
-            stats = product_stats[product_filter]
-            return f"""📊 BÁO CÁO {product_filter.upper()}
+        return get_product_detail_report(product_filter, product_stats[product_filter])
 
-• Lead: {stats['leads']}
-• Đơn: {stats['orders']}
-• Doanh thu: {stats['revenue']:,}đ"""
-        else:
-            return f"Không có dữ liệu cho {product_filter}"
-
-    # Tạo báo cáo tổng hợp
+    # Tạo báo cáo tổng hợp (giữ nguyên như cũ)
     msg = "📊 BÁO CÁO DOANH THU HÔM NAY\n\n"
 
     # Tâm Não An + Bảo Thần Khang
@@ -352,14 +344,6 @@ def get_revenue_report(product_filter=None):
     msg += f"  • Đơn: {hg_stats['orders']}\n"
     msg += f"  • Doanh thu: {hg_stats['revenue']:,}đ\n\n"
 
-    # Khác
-    other_stats = product_stats["Khác"]
-    if other_stats["leads"] > 0:
-        msg += "**📦 Sản phẩm khác**\n"
-        msg += f"  • Lead: {other_stats['leads']}\n"
-        msg += f"  • Đơn: {other_stats['orders']}\n"
-        msg += f"  • Doanh thu: {other_stats['revenue']:,}đ\n\n"
-
     # Tổng kết
     total_leads = sum(s["leads"] for s in product_stats.values())
     total_orders = sum(s["orders"] for s in product_stats.values())
@@ -375,6 +359,62 @@ def get_revenue_report(product_filter=None):
     # Lưu cache
     revenue_cache["data"] = msg
     revenue_cache["time"] = now
+
+    return msg
+
+
+def get_product_detail_report(product_name, stats):
+    """Báo cáo chi tiết cho từng sản phẩm kèm chi phí ads"""
+
+    # Lấy chi phí ads cho sản phẩm
+    spend = 0
+    campaigns_active = 0
+
+    # Lấy dữ liệu từ Facebook Ads
+    try:
+        url_insights = f"https://graph.facebook.com/v24.0/{AD_ACCOUNT_ID}/insights"
+        params_insights = {
+            "access_token": META_TOKEN,
+            "level": "campaign",
+            "fields": "campaign_name,spend",
+            "date_preset": "today",
+            "limit": 500,
+        }
+
+        res_insights = requests.get(url_insights, params=params_insights)
+        data_insights = res_insights.json()
+
+        campaigns = set()
+        if "data" in data_insights:
+            for ad in data_insights["data"]:
+                campaign_name = ad.get("campaign_name", "")
+                # Kiểm tra campaign có thuộc sản phẩm này không
+                for keyword in PRODUCTS[product_name]["keywords"]:
+                    if keyword.lower() in campaign_name.lower():
+                        spend += float(ad.get("spend", 0))
+                        campaigns.add(campaign_name)
+                        break
+
+        campaigns_active = len(campaigns)
+    except:
+        pass
+
+    # Icon theo sản phẩm
+    icons = {"Tâm Não An": "🧠", "Bảo Khớp Khang": "🦴", "Heart Gold": "💛"}
+    icon = icons.get(product_name, "📦")
+
+    # Tạo báo cáo
+    msg = f"{icon} **{product_name}**\n"
+    msg += f"  • Data: {stats['leads']}\n"
+    msg += f"  • Đơn: {stats['orders']}\n"
+    msg += f"  • Doanh thu: {stats['revenue']:,}đ\n"
+    msg += f"  • Chi phí ads: {int(spend):,}đ\n"
+    msg += f"  • Campaign đang hoạt động: {campaigns_active}"
+
+    # Tính ROAS nếu có
+    if spend > 0 and stats["revenue"] > 0:
+        roas = stats["revenue"] / spend
+        msg += f"\n  • 📈 ROAS: {roas:.2f}x"
 
     return msg
 
@@ -434,6 +474,7 @@ def tra_cuoc_hoi_thoai(sdt):
             msg += f"Lần {i} - {thoi_gian}\n"
             msg += f"Trạng thái: {trang_thai}\n"
             msg += f"📝 {tin_nhan}\n"
+            msg += f"👤 Sale: {sale_name}\n"  # Thêm dòng này
             msg += f"📦 {product_name}\n"
             msg += "─" * 20 + "\n"
 
@@ -527,7 +568,7 @@ def get_ads_report():
             "bad_120": set(),
             "bad_240": set(),
             "bad_360": set(),
-            "adsets_list": [],  # Lưu danh sách adset để kiểm tra
+            "adsets_list": [],
         }
 
     # Phân loại campaign theo sản phẩm
@@ -556,16 +597,6 @@ def get_ads_report():
                     product_reports[product_name]["adsets_active"].add(adset["id"])
                     product_reports[product_name]["campaigns_active"].add(campaign_id)
 
-                # Lưu thông tin adset để kiểm tra sau
-                product_reports[product_name]["adsets_list"].append(
-                    {
-                        "id": adset["id"],
-                        "name": adset.get("name"),
-                        "campaign_id": campaign_id,
-                        "status": adset.get("status"),
-                    }
-                )
-
     # Xử lý dữ liệu chi tiêu
     if "data" in data_insights:
         for ad in data_insights["data"]:
@@ -586,17 +617,6 @@ def get_ads_report():
 
                 product_reports[product_name]["total_spend"] += spend
                 product_reports[product_name]["total_contact"] += contact
-
-                # Kiểm tra các adset đang active
-                if adset_id in product_reports[product_name]["adsets_active"]:
-                    adset_name = ad.get("adset_name", "")
-
-                    if spend > 120000 and contact == 0:
-                        product_reports[product_name]["bad_120"].add(adset_name)
-                    if spend > 240000 and contact <= 1:
-                        product_reports[product_name]["bad_240"].add(adset_name)
-                    if spend > 360000 and contact <= 3:
-                        product_reports[product_name]["bad_360"].add(adset_name)
 
     # Tạo báo cáo
     msg = "📊 BÁO CÁO ADS THEO SẢN PHẨM\n\n"
@@ -619,33 +639,24 @@ def get_ads_report():
         msg += f"  • Campaign: {campaigns_active}\n"
         msg += f"  • Nhóm QC: {adsets_active}\n"
         msg += f"  • Chi tiêu: {total_spend:,}đ\n"
-        msg += f"  • Liên hệ: {total_contact}\n"
+        msg += f"  • Liên hệ: {total_contact}\n\n"
 
-        # Gợi ý các nhóm nên tắt
-        suggestions = []
-        if report["bad_120"]:
-            suggestions.append(f">120k chưa tin: {len(report['bad_120'])}")
-        if report["bad_240"]:
-            suggestions.append(f">240k ≤1 tin: {len(report['bad_240'])}")
-        if report["bad_360"]:
-            suggestions.append(f">360k ≤3 tin: {len(report['bad_360'])}")
+    # Thêm tổng kết - CHỈ TÍNH CAMP VÀ NHÓM ĐANG HOẠT ĐỘNG
+    total_campaigns_active = 0
+    total_adsets_active = 0
+    total_spend_all = 0
+    total_contact_all = 0
 
-        if suggestions:
-            msg += f"  • ⚠️ Cần xem: {', '.join(suggestions)}\n"
-
-        msg += "\n"
-
-    # Thêm tổng kết
-    total_campaigns = len(
-        [c for c in all_campaigns.values() if c.get("status") == "ACTIVE"]
-    )
-    total_adsets = sum(len(r["adsets_active"]) for r in product_reports.values())
-    total_spend_all = sum(int(r["total_spend"]) for r in product_reports.values())
-    total_contact_all = sum(r["total_contact"] for r in product_reports.values())
+    for product in products:
+        report = product_reports[product["name"]]
+        total_campaigns_active += len(report["campaigns_active"])
+        total_adsets_active += len(report["adsets_active"])
+        total_spend_all += int(report["total_spend"])
+        total_contact_all += report["total_contact"]
 
     msg += "📈 TỔNG KẾT\n"
-    msg += f"• Tổng campaign: {total_campaigns}\n"
-    msg += f"• Tổng nhóm QC: {total_adsets}\n"
+    msg += f"• Tổng campaign đang hoạt động: {total_campaigns_active}\n"
+    msg += f"• Tổng nhóm QC đang hoạt động: {total_adsets_active}\n"
     msg += f"• Tổng chi: {total_spend_all:,}đ\n"
     msg += f"• Tổng LH: {total_contact_all}"
 
