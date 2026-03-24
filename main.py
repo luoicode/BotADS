@@ -76,10 +76,9 @@ cookies = {
 sent_orders = set()
 processed_updates = set()
 
-report_1140_sent = False
-report_1330_sent = False
-report_15_sent = False
-report_17_sent = False
+last_report_date = {"date": None}  # ✅ THÊM DÒNG NÀY
+last_expiry_alert_date = None
+last_cookie_alert_date = None
 
 # ===== CHECK EXPIRY DATES =====
 EXPIRY_CHECKED = False
@@ -124,16 +123,23 @@ REVENUE_CACHE_TIME = 300  # 5 phút
 
 
 def check_expiry_dates():
-    """Kiểm tra và thông báo các mục sắp hết hạn"""
-    global EXPIRY_CHECKED
+    global last_expiry_alert_date
 
-    if EXPIRY_CHECKED:
+    now_vn = get_time_vn()
+    today = now_vn.strftime("%Y-%m-%d")
+
+    # ❌ nếu đã gửi hôm nay rồi → bỏ qua
+    if last_expiry_alert_date == today:
+        return
+
+    # ✅ CHỈ chạy lúc 00:00 - 00:05
+    if not (now_vn.hour == 0 and now_vn.minute < 5):
         return
 
     now = time.time()
     warnings = []
 
-    # Kiểm tra Meta Token
+    # ===== META TOKEN =====
     days_left = (META_EXPIRY - now) / 86400
     if days_left < 7:
         warnings.append(
@@ -144,7 +150,7 @@ def check_expiry_dates():
             f"📅 Meta Token còn: {int(days_left)} ngày ({datetime.fromtimestamp(META_EXPIRY, vn_tz).strftime('%d/%m/%Y')})"
         )
 
-    # Kiểm tra Sandbox Token
+    # ===== SANDBOX TOKEN =====
     days_left = (SANDWICH_EXPIRY - now) / 86400
     if days_left < 3:
         warnings.append(
@@ -154,28 +160,23 @@ def check_expiry_dates():
         warnings.append(
             f"⚠️ Sandwich Token sắp hết hạn: {int(days_left)} ngày ({datetime.fromtimestamp(SANDWICH_EXPIRY, vn_tz).strftime('%d/%m/%Y')})"
         )
-    else:
-        warnings.append(f"✅ Sandwich Token còn: {int(days_left)} ngày")
 
-    # Kiểm tra Railway
-    now_vn = get_time_vn()
+    # ===== RAILWAY =====
     hours_used = (now_vn.day - 1) * 24 + now_vn.hour
     hours_left = 500 - hours_used
 
     if hours_left < 0:
-        warnings.append(f"⚠️⚠️ RAILWAY ĐÃ HẾT GIỜ ({hours_used}/500 giờ)! Bot sẽ ngủ.")
+        warnings.append(f"⚠️⚠️ RAILWAY ĐÃ HẾT GIỜ ({hours_used}/500 giờ)!")
     elif hours_left < 50:
         warnings.append(f"⚠️ Railway còn: {hours_left} giờ ({hours_used}/500)")
-    else:
-        warnings.append(f"✅ Railway còn: {hours_left} giờ")
 
-    # Gửi thông báo
+    # ===== GỬI TELE =====
     if warnings:
-        msg = "🔔 **KIỂM TRA HẠN SỬ DỤNG**\n\n" + "\n".join(warnings)
+        msg = "🔔 KIỂM TRA HẠN SỬ DỤNG\n\n" + "\n".join(warnings)
         send_telegram(msg)
-        print(f"\n{'='*50}\n{msg}\n{'='*50}")
 
-    EXPIRY_CHECKED = True
+    # ✅ Đánh dấu đã gửi hôm nay
+    last_expiry_alert_date = today
 
 
 def send_telegram(msg):
@@ -184,34 +185,6 @@ def send_telegram(msg):
         requests.post(url_tele, data={"chat_id": CHAT_ID, "text": msg})
     except:
         print(f"Không gửi được Telegram lúc {get_time_vn().strftime('%H:%M:%S')}")
-
-    """Xác định sản phẩm từ lead dựa trên tên sản phẩm hoặc landing"""
-    # Kiểm tra từ sanPhamInfo
-    products = lead.get("sanPhamInfo") or []
-    if isinstance(products, list) and products:
-        first = products[0] or {}
-        product_name = (
-            first.get("tenSanPham")
-            or first.get("sanPhamTen")
-            or first.get("productName")
-            or first.get("ten")
-            or ""
-        )
-
-        # Kiểm tra từng sản phẩm
-        for prod_key, prod_info in PRODUCTS.items():
-            for keyword in prod_info["keywords"]:
-                if keyword.lower() in product_name.lower():
-                    return prod_key
-
-    # Nếu không có, kiểm tra từ landingTen
-    landing = lead.get("landingTen", "")
-    for prod_key, prod_info in PRODUCTS.items():
-        for keyword in prod_info["keywords"]:
-            if keyword.lower() in landing.lower():
-                return prod_key
-
-    return "Khác"
 
 
 def get_product_from_lead(lead):
@@ -1078,6 +1051,14 @@ Thread(target=auto_ping, daemon=True).start()
 
 while True:
     try:
+        today = get_time_vn().strftime("%Y-%m-%d")
+
+        if last_report_date["date"] != today:
+            report_1140_sent = False
+            report_1330_sent = False
+            report_15_sent = False
+            report_17_sent = False
+            last_report_date["date"] = today
         print(f"🔄 [{get_time_vn().strftime('%H:%M:%S')}] Bắt đầu vòng lặp...")
         check_expiry_dates()
         check_telegram_commands()
@@ -1088,7 +1069,6 @@ while True:
         # ✅ CHECK COOKIE DIE
         if res.status_code == 401:
             today = get_time_vn().strftime("%Y-%m-%d")
-            last_cookie_alert_date = None
             if last_cookie_alert_date != today:
                 send_telegram("❌ COOKIE SANDBOX HẾT HẠN! Login lại ngay!")
                 last_cookie_alert_date = today
