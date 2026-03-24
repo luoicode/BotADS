@@ -188,7 +188,6 @@ def send_telegram(msg):
 
 
 def get_product_from_lead(lead):
-    # Ưu tiên lấy từ sanPhamInfo
     products = lead.get("sanPhamInfo") or []
 
     if isinstance(products, list) and products:
@@ -202,12 +201,23 @@ def get_product_from_lead(lead):
         )
 
         if product_name and isinstance(product_name, str):
-            return product_name.strip()
+            product_name = product_name.strip()
 
-    # Fallback: lấy từ landing
+            # ✅ GỘP LUÔN TẠI ĐÂY
+            if "bảo thần khang" in product_name.lower():
+                return "Tâm Não An"
+
+            return product_name
+
     landing = lead.get("landingTen", "")
     if landing:
-        return landing.strip()
+        landing = landing.strip()
+
+        # ✅ GỘP CẢ LANDING
+        if "bảo thần khang" in landing.lower():
+            return "Tâm Não An"
+
+        return landing
 
     return "Không rõ"
 
@@ -315,6 +325,10 @@ def get_revenue_report(product_filter=None):
     for lead in valid_leads:
         product = get_product_from_lead(lead)
 
+        # ✅ GỘP LẦN CUỐI (CHẮC ĂN)
+        if product == "Bảo Thần Khang":
+            product = "Tâm Não An"
+
         # Nếu chưa có sản phẩm này thì tạo mới
         if product not in product_stats:
             product_stats[product] = {"leads": 0, "orders": 0, "revenue": 0}
@@ -329,7 +343,10 @@ def get_revenue_report(product_filter=None):
 
     # Nếu có filter, gọi hàm báo cáo chi tiết theo sản phẩm
     if product_filter:
-        return get_product_detail_report(product_filter, product_stats[product_filter])
+        stats = product_stats.get(
+            product_filter, {"leads": 0, "orders": 0, "revenue": 0}
+        )
+        return get_product_detail_report(product_filter, stats)
 
     # ===== LẤY CHI PHÍ ADS TỪ INSIGHTS (CHỈ CAMPAIGN CÓ DỮ LIỆU) =====
     total_ads_spend = 0
