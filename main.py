@@ -67,10 +67,10 @@ headers = {
 
 cookies = {
     "prouid": "4a915cef-6c5c-4a5a-9add-19fac8f0f54b",
-    "protoken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjRhOTE1Y2VmLTZjNWMtNGE1YS05YWRkLTE5ZmFjOGYwZjU0YiIsInRob2lnaWFuIjoiMTc3MzczNDA2NiIsImRvbWFpbiI6ImR1b2NuaGF0dGFtLnNhbmRib3guY29tLnZuIiwiZGV2aWNlIjoiMDUzYTAyNzMtMWVkNC00ODBjLTgwNjYtN2IzZmFjYTEzODc5IiwibmJmIjoxNzczNzM0MDY3LCJleHAiOjE3NzQzMzg4NjcsImlhdCI6MTc3MzczNDA2N30.AzANmTWplnJx3lwopUf37VBHap1hMQwWfBfLHajSICA",
+    "protoken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjRhOTE1Y2VmLTZjNWMtNGE1YS05YWRkLTE5ZmFjOGYwZjU0YiIsInRob2lnaWFuIjoiMTc3MzczNDA2NiIsImRvbWFpbiI6ImR1b2NuaGF0dGFtLnNhbmRib3guY29tLnZuIiwiZGV2aWNlIjoiMDUzYTAyNzMtMWVkNC00ODBjLTgwNjYtN2IzZmFjYTEzODc5IiwibmJmIjoxNzc0MzM5MDEwLCJleHAiOjE3NzQ5NDM4MTAsImlhdCI6MTc3NDMzOTAxMH0.GAIEf_fgmXJAOXuHnp2DRAoZaW-fs0h05wFCo7e5M7U",
     "prorefreshToken": "258B74C5338542FBc1a5e568bee14cd98de747590a35685f",
     "_ga": "GA1.1.690778090.1772418379",
-    "_ga_HC7STT03M5": "GS2.1.s1773729347$o135$g1$t1773734939$j60$l0$h0",
+    "_ga_HC7STT03M5": "GS2.1.s1774361119$o194$g0$t1774361127$j52$l0$h0",
 }
 
 sent_orders = set()
@@ -84,7 +84,7 @@ report_17_sent = False
 # ===== CHECK EXPIRY DATES =====
 EXPIRY_CHECKED = False
 META_EXPIRY = 1778780378  # 15/05/2026
-SANDWICH_EXPIRY = 1774047762  # 20/03/2026
+SANDWICH_EXPIRY = 1774943810  # 31/03/2026
 
 ads_cache = {"data": None, "time": 0}
 CACHE_TIME = 60  # Cache 60 giây
@@ -185,8 +185,6 @@ def send_telegram(msg):
     except:
         print(f"Không gửi được Telegram lúc {get_time_vn().strftime('%H:%M:%S')}")
 
-
-def get_product_from_lead(lead):
     """Xác định sản phẩm từ lead dựa trên tên sản phẩm hoặc landing"""
     # Kiểm tra từ sanPhamInfo
     products = lead.get("sanPhamInfo") or []
@@ -214,6 +212,31 @@ def get_product_from_lead(lead):
                 return prod_key
 
     return "Khác"
+
+
+def get_product_from_lead(lead):
+    # Ưu tiên lấy từ sanPhamInfo
+    products = lead.get("sanPhamInfo") or []
+
+    if isinstance(products, list) and products:
+        first = products[0] or {}
+
+        product_name = (
+            first.get("tenSanPham")
+            or first.get("sanPhamTen")
+            or first.get("productName")
+            or first.get("ten")
+        )
+
+        if product_name and isinstance(product_name, str):
+            return product_name.strip()
+
+    # Fallback: lấy từ landing
+    landing = lead.get("landingTen", "")
+    if landing:
+        return landing.strip()
+
+    return "Không rõ"
 
 
 def filter_leads_data(leads_data):
@@ -291,6 +314,19 @@ def get_revenue_report(product_filter=None):
     # Lấy dữ liệu từ API
     payload = get_payload()
     res = requests.post(url, headers=headers, cookies=cookies, json=payload)
+
+    # ✅ CHECK COOKIE DIE
+    if res.status_code == 401:
+        today = get_time_vn().strftime("%Y-%m-%d")
+
+        global last_cookie_alert_date
+        if last_cookie_alert_date != today:
+            send_telegram("❌ COOKIE SANDBOX HẾT HẠN! Login lại ngay!")
+            last_cookie_alert_date = today
+
+        return "❌ Không lấy được dữ liệu (cookie hết hạn)"
+
+    # ✅ THIẾU DÒNG NÀY (bạn phải thêm)
     data = res.json()
 
     if "data" not in data:
@@ -300,22 +336,19 @@ def get_revenue_report(product_filter=None):
     valid_leads = filter_leads_data(data["data"])
 
     # Khởi tạo báo cáo theo sản phẩm
-    product_stats = {}
-    for prod_key in PRODUCTS.keys():
-        product_stats[prod_key] = {"leads": 0, "orders": 0, "revenue": 0}
-    product_stats["Khác"] = {"leads": 0, "orders": 0, "revenue": 0}
 
-    # Xử lý từng lead
+    product_stats = {}
+
     for lead in valid_leads:
         product = get_product_from_lead(lead)
 
-        # Gộp Bảo Thần Khang vào Tâm Não An
-        if product == "Bảo Thần Khang":
-            product = "Tâm Não An"
+        # Nếu chưa có sản phẩm này thì tạo mới
+        if product not in product_stats:
+            product_stats[product] = {"leads": 0, "orders": 0, "revenue": 0}
 
         product_stats[product]["leads"] += 1
 
-        # Kiểm tra đơn hàng
+        # Nếu là đơn
         if lead.get("lgtDonHangTrangThaiChotDon") == 1:
             product_stats[product]["orders"] += 1
             money = round(lead.get("lgtDonHangTienThuKhach") or 0)
@@ -338,6 +371,8 @@ def get_revenue_report(product_filter=None):
         }
         res_insights = requests.get(url_insights, params=params_insights)
         data_insights = res_insights.json()
+        if "error" in data_insights:
+            send_telegram(f"❌ META TOKEN LỖI: {data_insights['error'].get('message')}")
 
         if "data" in data_insights:
             for item in data_insights["data"]:
@@ -351,28 +386,35 @@ def get_revenue_report(product_filter=None):
     except Exception as e:
         print(f"❌ Lỗi lấy chi phí ads: {e}")
 
-    # Tạo báo cáo tổng hợp
-    tna_revenue = product_stats["Tâm Não An"]["revenue"]
-    bkk_revenue = product_stats["Bảo Khớp Khang"]["revenue"]
-    hg_revenue = product_stats["Heart Gold"]["revenue"]
-
+    # ===== TÍNH TỔNG =====
     total_leads = sum(s["leads"] for s in product_stats.values())
     total_orders = sum(s["orders"] for s in product_stats.values())
     total_revenue = sum(s["revenue"] for s in product_stats.values())
     cr = (total_orders / total_leads * 100) if total_leads > 0 else 0
 
+    # ===== TẠO MESSAGE =====
     msg = "📊 BÁO CÁO DOANH THU HÔM NAY\n\n"
-    msg += f"🧠 Tâm Não An: {tna_revenue:,}đ\n"
-    msg += f"🦴 Bảo Khớp Khang: {bkk_revenue:,}đ\n"
-    msg += f"💛 Heart Gold: {hg_revenue:,}đ\n\n"
-    msg += "📈 TỔNG KẾT\n"
+
+    # Sắp xếp theo doanh thu giảm dần
+    sorted_products = sorted(
+        product_stats.items(), key=lambda x: x[1]["revenue"], reverse=True
+    )
+
+    for product, stats in sorted_products:
+        revenue = stats["revenue"]
+        orders = stats["orders"]
+
+        msg += f"📦 {product}: {revenue:,}đ ({orders} đơn)\n"
+
+    # ===== TỔNG KẾT =====
+    msg += "\n📈 TỔNG KẾT\n"
     msg += f"  • Tổng Lead: {total_leads}\n"
     msg += f"  • Tổng Đơn: {total_orders}\n"
     msg += f"  • Tổng Doanh thu: {total_revenue:,}đ\n"
     msg += f"  • Chi phí ads tổng: {int(total_ads_spend):,}đ\n"
     msg += f"  • CR: {cr:.2f}%"
 
-    # Lưu cache
+    # ===== CACHE =====
     revenue_cache["data"] = msg
     revenue_cache["time"] = now
 
@@ -382,17 +424,15 @@ def get_revenue_report(product_filter=None):
 def get_product_detail_report(product_name, stats):
     """Báo cáo chi tiết cho từng sản phẩm kèm chi phí ads"""
 
-    # Lấy chi phí ads cho sản phẩm
     spend = 0
-    campaigns_active = 0
+    adsets_active = set()  # ✅ dùng set để không bị trùng
 
-    # Lấy dữ liệu từ Facebook Ads
     try:
         url_insights = f"https://graph.facebook.com/v24.0/{AD_ACCOUNT_ID}/insights"
         params_insights = {
             "access_token": META_TOKEN,
-            "level": "campaign",
-            "fields": "campaign_name,spend",
+            "level": "adset",  # ✅ đổi sang adset
+            "fields": "campaign_name,adset_name,adset_id,spend",
             "date_preset": "today",
             "limit": 500,
         }
@@ -400,34 +440,38 @@ def get_product_detail_report(product_name, stats):
         res_insights = requests.get(url_insights, params=params_insights)
         data_insights = res_insights.json()
 
-        campaigns = set()
         if "data" in data_insights:
             for ad in data_insights["data"]:
                 campaign_name = ad.get("campaign_name", "")
-                # Kiểm tra campaign có thuộc sản phẩm này không
+                adset_id = ad.get("adset_id")
+                adset_name = ad.get("adset_name", "")
+
                 for keyword in PRODUCTS[product_name]["keywords"]:
                     if keyword.lower() in campaign_name.lower():
                         spend += float(ad.get("spend", 0))
-                        campaigns.add(campaign_name)
+
+                        # ✅ chỉ tính nhóm có spend (đang chạy)
+                        if float(ad.get("spend", 0)) > 0:
+                            adsets_active.add(adset_id)
+
                         break
 
-        campaigns_active = len(campaigns)
-    except:
-        pass
+    except Exception as e:
+        print("Lỗi ads:", e)
 
-    # Icon theo sản phẩm
+    # Icon
     icons = {"Tâm Não An": "🧠", "Bảo Khớp Khang": "🦴", "Heart Gold": "💛"}
     icon = icons.get(product_name, "📦")
 
-    # Tạo báo cáo
+    # Message
     msg = f"{icon} {product_name}\n"
     msg += f"  • Data: {stats['leads']}\n"
     msg += f"  • Đơn: {stats['orders']}\n"
     msg += f"  • Doanh thu: {stats['revenue']:,}đ\n"
     msg += f"  • Chi phí ads: {int(spend):,}đ\n"
-    msg += f"  • Campaign đang hoạt động: {campaigns_active}"
+    msg += f"  • Nhóm QC đang chạy: {len(adsets_active)}"  # ✅ đổi text
 
-    # Tính ROAS nếu có
+    # ROAS
     if spend > 0 and stats["revenue"] > 0:
         roas = stats["revenue"] / spend
         msg += f"\n  • 📈 ROAS: {roas:.2f}x"
@@ -446,6 +490,19 @@ def tra_cuoc_hoi_thoai(sdt):
         # Lấy dữ liệu từ API
         payload = get_payload()
         res = requests.post(url, headers=headers, cookies=cookies, json=payload)
+
+        # ✅ CHECK COOKIE DIE
+        if res.status_code == 401:
+            today = get_time_vn().strftime("%Y-%m-%d")
+
+            global last_cookie_alert_date
+            if last_cookie_alert_date != today:
+                send_telegram("❌ COOKIE SANDBOX HẾT HẠN! Login lại ngay!")
+                last_cookie_alert_date = today
+
+            return f"❌ Không tra được số {sdt} (cookie hết hạn)"
+
+        # ✅ parse data sau khi check
         data = res.json()
 
         if "data" not in data:
@@ -485,7 +542,7 @@ def tra_cuoc_hoi_thoai(sdt):
                 tin_nhan = "Không có ghi chú"
 
             # Sản phẩm
-            product_name = get_product_from_lead(lead)
+            products = lead.get("sanPhamInfo")
 
             # Tên sale - LẤY TRỰC TIẾP TỪ lead
             sale_name = lead.get("saleDisplayName", "Chưa có sale")
@@ -572,7 +629,8 @@ def get_ads_report():
 
     res_insights = requests.get(url_insights, params=params_insights)
     data_insights = res_insights.json()
-
+    if "error" in data_insights:
+        send_telegram(f"❌ META TOKEN LỖI: {data_insights['error'].get('message')}")
     # Xử lý dữ liệu theo từng sản phẩm
     product_reports = {}
 
@@ -1001,8 +1059,22 @@ def get_payload():
     }
 
 
+def auto_ping():
+    while True:
+        try:
+            requests.get("http://localhost:8080")
+            print("🔄 Ping giữ bot sống")
+        except:
+            print("❌ Ping lỗi")
+        time.sleep(300)  # 5 phút
+
+
 print("Bot Sandbox đã khởi động")
 keep_alive()
+
+# ✅ THÊM DÒNG NÀY
+Thread(target=auto_ping, daemon=True).start()
+
 
 while True:
     try:
@@ -1012,6 +1084,18 @@ while True:
 
         payload = get_payload()
         res = requests.post(url, headers=headers, cookies=cookies, json=payload)
+
+        # ✅ CHECK COOKIE DIE
+        if res.status_code == 401:
+            today = get_time_vn().strftime("%Y-%m-%d")
+            last_cookie_alert_date = None
+            if last_cookie_alert_date != today:
+                send_telegram("❌ COOKIE SANDBOX HẾT HẠN! Login lại ngay!")
+                last_cookie_alert_date = today
+
+            time.sleep(60)
+            continue
+
         data = res.json()
 
         leads_today = []
