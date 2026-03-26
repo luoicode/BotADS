@@ -64,13 +64,12 @@ headers = {
     "referer": "https://duocnhattam.sandbox.com.vn/",
     "user-agent": "Mozilla/5.0",
 }
-
 cookies = {
     "prouid": "4a915cef-6c5c-4a5a-9add-19fac8f0f54b",
-    "protoken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjRhOTE1Y2VmLTZjNWMtNGE1YS05YWRkLTE5ZmFjOGYwZjU0YiIsInRob2lnaWFuIjoiMTc3NDQzMDMxMiIsImRvbWFpbiI6ImR1b2NuaGF0dGFtLnNhbmRib3guY29tLnZuIiwiZGV2aWNlIjoiNzNjMTA5ODMtNDJiMi00YzVjLTgwNmMtMmFiYzIyM2ZmYjIwIiwibmJmIjoxNzc0NDMwMzEyLCJleHAiOjE3NzUwMzUxMTIsImlhdCI6MTc3NDQzMDMxMn0.vfYMm7nP7bltsHlfX7ZPjtZn9dPqRmIVo3qWNwLJNWQ",
-    "prorefreshToken": "ABCBBC0E3A7BCCC161992e6921e7449ebeaf5cf11c50dfd9",
+    "protoken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjRhOTE1Y2VmLTZjNWMtNGE1YS05YWRkLTE5ZmFjOGYwZjU0YiIsInRob2lnaWFuIjoiMTc3NDU0MzI0NiIsImRvbWFpbiI6ImR1b2NuaGF0dGFtLnNhbmRib3guY29tLnZuIiwiZGV2aWNlIjoiMTBlYjQ1NDgtNjUzOC00NWFkLWJlMTUtMDFlZWU3Yzg1ZTc1IiwibmJmIjoxNzc0NTQzMjQ2LCJleHAiOjE3NzUxNDgwNDYsImlhdCI6MTc3NDU0MzI0Nn0.ljKTxOreMkXoz5aeBRNZeiwnXdE44YABOnDqIJ0qptc",
+    "prorefreshToken": "2CC93680958C6F6398943ddf7c6d4004866146a060e187dc",
     "_ga": "GA1.1.690778090.1772418379",
-    "_ga_HC7STT03M5": "GS2.1.s1774430347$o199$g1$t1774430363$j44$l0$h0",
+    "_ga_HC7STT03M5": "GS2.1.s1774542725$o209$g1$t1774543351$j60$l0$h0",
 }
 
 sent_orders = set()
@@ -83,7 +82,7 @@ last_cookie_alert_date = None
 # ===== CHECK EXPIRY DATES =====
 EXPIRY_CHECKED = False
 META_EXPIRY = 1778780378  # 15/05/2026
-SANDWICH_EXPIRY = 1774943810  # 31/03/2026
+SANDWICH_EXPIRY = 1775148046  # 03/04/2026
 
 ads_cache = {"data": None, "time": 0}
 CACHE_TIME = 60  # Cache 60 giây
