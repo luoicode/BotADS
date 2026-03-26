@@ -190,7 +190,7 @@ def send_telegram(msg):
 def get_product_from_lead(lead):
     text = ""
 
-    # Ưu tiên tên sản phẩm
+    # Ưu tiên lấy từ sản phẩm
     products = lead.get("sanPhamInfo") or []
     if isinstance(products, list) and products:
         first = products[0] or {}
@@ -202,15 +202,18 @@ def get_product_from_lead(lead):
             or ""
         )
 
-    # Nếu không có thì lấy landing
+    # Nếu không có thì lấy từ landing
     if not text:
         text = lead.get("landingTen", "")
 
-    text = text.lower()
+    text = text.lower().strip()
 
-    # ✅ GỘP LOGIC TẠI ĐÂY (QUAN TRỌNG NHẤT)
-    if any(k in text for k in ["tâm não", "bảo thần", "bảo mạch"]):
+    # ✅ LOGIC CHUẨN CỦA BẠN
+    if any(k in text for k in ["tâm não", "bảo thần"]):
         return "Tâm Não An"
+
+    if "bảo mạch" in text:
+        return "Bảo Mạch Khang"
 
     if any(k in text for k in ["bảo khớp", "bkk"]):
         return "Bảo Khớp Khang"
@@ -222,59 +225,34 @@ def get_product_from_lead(lead):
 
 
 def filter_leads_data(leads_data):
-    """Lọc leads theo các tiêu chí: không khách cũ, không trùng marketing khác,
-    nhưng vẫn giữ lead chốt đơn dù trùng số với chính mình"""
+    today = get_time_vn().strftime("%Y-%m-%d")
 
-    phone_first_owner = {}  # Lưu marketing đầu tiên của mỗi số
-    leads_with_orders = set()  # Lưu các số đã có đơn chốt
+    # Chỉ lấy lead trong ngày
+    today_leads = [
+        lead for lead in leads_data if lead.get("ngayTao", "").startswith(today)
+    ]
+
+    # Sắp xếp theo thời gian tăng dần
+    today_leads = sorted(today_leads, key=lambda x: x.get("ngayTao", ""))
+
+    phone_first_owner = {}
     valid_leads = []
 
-    # Sắp xếp leads theo thời gian tạo (ngayTao) - cũ nhất lên trước
-    sorted_leads = sorted(leads_data, key=lambda x: x.get("ngayTao", ""))
-
-    # Bước 1: Xác định marketing đầu tiên của mỗi số
-    for lead in sorted_leads:
+    for lead in today_leads:
         phone = lead.get("khachHangSoDienThoai")
         marketing = lead.get("marketingUserName")
 
-        if phone and marketing:
-            if phone not in phone_first_owner:
-                phone_first_owner[phone] = marketing
-
-    # Bước 2: Xác định số nào có đơn chốt
-    for lead in sorted_leads:
-        if lead.get("lgtDonHangTrangThaiChotDon") == 1:
-            phone = lead.get("khachHangSoDienThoai")
-            leads_with_orders.add(phone)
-
-    # Bước 3: Lọc lead hợp lệ
-    for lead in sorted_leads:
-        phone = lead.get("khachHangSoDienThoai")
-        marketing = lead.get("marketingUserName")
-        is_order = lead.get("lgtDonHangTrangThaiChotDon") == 1
-
-        # Bỏ qua nếu không phải lead của mình
-        if marketing != MY_USERNAME:
+        if not phone or not marketing:
             continue
 
-        # Bỏ qua khách cũ
-        if lead.get("isKhachCu"):
-            continue
+        # Nếu số chưa xuất hiện → ghi nhận người đầu tiên
+        if phone not in phone_first_owner:
+            phone_first_owner[phone] = marketing
 
-        # Nếu số này có đơn chốt ở bất kỳ lead nào, GIỮ LẠI TẤT CẢ leads của số đó
-        if phone in leads_with_orders:
-            valid_leads.append(lead)
-            continue
-
-        # Nếu không có đơn chốt, kiểm tra marketing đầu tiên
-        # Chỉ lấy lead đầu tiên của mỗi số (nếu không có đơn)
-        first_owner = phone_first_owner.get(phone)
-        if first_owner == MY_USERNAME:
-            # Kiểm tra xem đã có lead nào của số này chưa
-            existing = next(
-                (l for l in valid_leads if l.get("khachHangSoDienThoai") == phone), None
-            )
-            if not existing:
+        # ✅ CHỈ lấy nếu bạn là người đầu tiên
+        if phone_first_owner[phone] == MY_USERNAME:
+            # đảm bảo mỗi số chỉ 1 lần
+            if not any(l.get("khachHangSoDienThoai") == phone for l in valid_leads):
                 valid_leads.append(lead)
 
     return valid_leads
