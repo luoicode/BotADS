@@ -188,38 +188,37 @@ def send_telegram(msg):
 
 
 def get_product_from_lead(lead):
-    products = lead.get("sanPhamInfo") or []
+    text = ""
 
+    # Ưu tiên tên sản phẩm
+    products = lead.get("sanPhamInfo") or []
     if isinstance(products, list) and products:
         first = products[0] or {}
-
-        product_name = (
+        text = (
             first.get("tenSanPham")
             or first.get("sanPhamTen")
             or first.get("productName")
             or first.get("ten")
+            or ""
         )
 
-        if product_name and isinstance(product_name, str):
-            product_name = product_name.strip()
+    # Nếu không có thì lấy landing
+    if not text:
+        text = lead.get("landingTen", "")
 
-            # ✅ GỘP LUÔN TẠI ĐÂY
-            if "bảo thần khang" in product_name.lower():
-                return "Tâm Não An"
+    text = text.lower()
 
-            return product_name
+    # ✅ GỘP LOGIC TẠI ĐÂY (QUAN TRỌNG NHẤT)
+    if any(k in text for k in ["tâm não", "bảo thần", "bảo mạch"]):
+        return "Tâm Não An"
 
-    landing = lead.get("landingTen", "")
-    if landing:
-        landing = landing.strip()
+    if any(k in text for k in ["bảo khớp", "bkk"]):
+        return "Bảo Khớp Khang"
 
-        # ✅ GỘP CẢ LANDING
-        if "bảo thần khang" in landing.lower():
-            return "Tâm Não An"
+    if any(k in text for k in ["heart gold", "hg"]):
+        return "Heart Gold"
 
-        return landing
-
-    return "Không rõ"
+    return "Khác"
 
 
 def filter_leads_data(leads_data):
@@ -325,9 +324,7 @@ def get_revenue_report(product_filter=None):
     for lead in valid_leads:
         product = get_product_from_lead(lead)
 
-        # ✅ GỘP LẦN CUỐI (CHẮC ĂN)
-        if product == "Bảo Thần Khang":
-            product = "Tâm Não An"
+        print(f"DEBUG PRODUCT: {product}")
 
         # Nếu chưa có sản phẩm này thì tạo mới
         if product not in product_stats:
